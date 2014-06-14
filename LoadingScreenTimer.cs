@@ -91,6 +91,7 @@ private double fTotalLoadLevelRounds = 0;
 private int fTaskId;
 private String fTaskScheduled;
 private DateTime fTaskTimestamp = DateTime.MinValue;
+private bool fTest;
 
 private PluginState fPluginState;
 private GameState fGameState;
@@ -131,6 +132,7 @@ public LoadingScreenTimer() {
     fTaskId = 100;
     fTaskScheduled = null;
     fTaskTimestamp = DateTime.MinValue;
+    fTest = false;
 
     fEasyTypeDict = new Dictionary<int, Type>();
     fEasyTypeDict.Add(0, typeof(int));
@@ -385,6 +387,12 @@ public void OnPluginEnable() {
     DebugWrite("^b^3Game state = " + fGameState, 6);
 
     ServerCommand("serverInfo");
+
+    // Send out test command
+    DebugWrite("^6Launching test task LST000 for 5 seconds", 3);
+    fTest = true;
+    //this.ExecuteCommand("procon.protected.tasks.add", "LST001", "5", "1", "1", "procon.protected.pluginconsole.write", "LST TEST!");
+    this.ExecuteCommand("procon.protected.tasks.add", "LST000", "5", "1", "1", "procon.protected.send", "currentLevel");
 }
 
 
@@ -738,7 +746,7 @@ private void StartTimerTask() {
     DebugWrite("^6Starting task " + fTaskScheduled + " for " + MaximumLoadingSeconds + " seconds, expiring with command: " + TimeExpiredCommand, 3);
     fTaskId += 1;
     fTaskTimestamp = DateTime.Now;
-    this.ExecuteCommand("procon.protected.tasks.add", fTaskScheduled, MaximumLoadingSeconds.ToString(), "0", "0", TimeExpiredCommand);
+    this.ExecuteCommand("procon.protected.tasks.add", fTaskScheduled, MaximumLoadingSeconds.ToString(), "1", "1", "procon.protected.send", TimeExpiredCommand);
 }
 
 
