@@ -354,7 +354,7 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
     this.RegisterEvents(this.GetType().Name, 
         "OnVersion",
         "OnServerInfo",
-        //"OnPlayerKilled",
+        "OnCurrentLevel",
         "OnPlayerSpawned",
         "OnPlayerTeamChange",
         "OnPlayerSquadChange",
@@ -680,6 +680,20 @@ public override void OnRunNextLevel() {
     if (!fIsEnabled) return;
     
     DebugWrite("^5Got OnRunNextLevel^n", 3);
+    if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("runNextRound")) {
+        ConsoleWarn("^0^n^bPOSSIBLE LOADING SCREEN PROBLEM: attempting to run next round ...");
+    }
+}
+
+
+public override void OnCurrentLevel(string mapFileName) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^5Got OnCurrentLevel^n", 3);
+    if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("currentLevel")) {
+        ConsoleWarn("^0^n^bPOSSIBLE LOADING SCREEN PROBLEM: information only, no action taken ...");
+        StopTasks();
+    }
 }
 
 
@@ -944,7 +958,22 @@ public static String ConvertHTMLToVBCode(String html) {
 
 public String GetPluginDescription() {
     return @"
-<h1>Loading Screen Timer</h1>
+<h1>Introduction</h1>
+<p>Use this plugin if you are having problems with infinite black loading screens.
+If it takes too long to load the next level, you can run a command, such as
+mapList.runNextRound, that might break your server out of the infinite black screen.
+You get to decide how long it should take to load the next level.</p>
+<h2>Settings</h2>
+
+<p><b>Minimum Players</b>: This plugin is active only if the specified minimum number of players are present in the server.</p>
+
+<p><b>Maximum Loading Seconds</b>: The maximum number of seconds you expect a level load to take. Should be between 15 and 60 seconds.</p>
+
+<p><b>Load Succeeded Event</b>: Choose whether a successful load is determined by the first team change event after a load, or the first player spawn. The first team change event is the earliest point by which a player comes out of the loading screen. The first player spawn comes later but insures that the level has loaded successfully. Using OnFirstTeamChange is recommended.</p>>
+
+<p><b>Time Expired Command</b>: The command to use to remedy the situation if the level load takes too much time. The recommended command is <b>mapList.runNextRound</b>. If you just want to test this plugin without affecting the server, change the command to <b>currentLevel</b>.</p>
+
+<p><b>Debug Logging Level</b>: Specifies how much debug logging you want: None, Limited (just the most critical events), or All (all events impacting the workings of this plugin).</p>
 ";
 }
 
