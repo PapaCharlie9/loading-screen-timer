@@ -394,8 +394,10 @@ public void OnPluginDisable() {
     try {
         fEnabledTimestamp = DateTime.MinValue;
         
-        ConsoleWrite("^bDisabling, removing tasks ...^n", 0);
-        StopTasks();
+        if (fTaskScheduled != null) {
+            ConsoleWrite("^bDisabling, removing tasks ...^n", 0);
+            StopTasks();
+        }
 
         fPluginState = PluginState.Disabled;
         fGameState = GameState.Unknown;
@@ -411,7 +413,7 @@ public void OnPluginDisable() {
 public override void OnVersion(String type, String ver) {
     if (!fIsEnabled) return;
     
-    DebugWrite("Got ^bOnVersion^n: " + type + " " + ver, 7);
+    DebugWrite("^5Got ^bOnVersion^n: " + type + " " + ver, 7);
 }
 
 
@@ -420,7 +422,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
 
     if (fGameState == GameState.Playing && squadId == 0) return;
     
-    DebugWrite("^9^bGot OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
+    DebugWrite("^5Got OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
 
 }
 
@@ -428,7 +430,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
 public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnPlayerTeamChange^n: " + soldierName + " " + teamId + " " + squadId, 6);
+    DebugWrite("^5Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 6);
 
     if (fPluginState == PluginState.Disabled || fPluginState == PluginState.Error) return;
 
@@ -445,7 +447,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             fGameState = (totalPlayers < 4) ? GameState.Warmup :GameState.Deploying;
 
             if (LoadSucceededEvent == LoadedEvent.OnFirstTeamChange) {
-                ConsoleWrite("LEVEL LOADED SUCCESSFULLY!", 0);
+                ConsoleWrite("^b^2LEVEL LOADED SUCCESSFULLY!", 0);
                 StopTasks();
                 UpdateLoadScreenDuration();
             }
@@ -461,7 +463,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
 public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnPlayerSpawned: ^n" + soldierName, 8);
+    DebugWrite("^5Got OnPlayerSpawned: ^n" + soldierName, 8);
     
     try {
         int totalPlayers = TotalPlayerCount();
@@ -505,7 +507,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
         isAdminKill = (weapon == "Death");
     }
     
-    DebugWrite("^9^bGot OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 8);
+    DebugWrite("^5Got OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 8);
     if (isAdminKill) DebugWrite("^9OnPlayerKilled: admin kill: ^b" + victim + "^n (" + weapon + ")", 7);
 
     try {
@@ -520,7 +522,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
 public override void OnServerInfo(CServerInfo serverInfo) {
     if (!fIsEnabled || serverInfo == null) return;
 
-    DebugWrite("^9^bGot OnServerInfo^n: Debug level = " + DebugLevel, 8);
+    DebugWrite("^5Got OnServerInfo: Debug level = " + DebugLevel + ", " + fGameState + ", " + TotalPlayerCount() + " players", 8);
 
     DateTime debugTime = DateTime.Now;
     
@@ -560,7 +562,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 
 public override void OnGlobalChat(String speaker, String message) {
     if (!fIsEnabled) return;
-    if (DebugLevel >= 8) ConsoleDebug("OnGlobalChat(" + speaker + ", '" + message + ")");
+    if (DebugLevel >= 11) ConsoleDebug("OnGlobalChat(" + speaker + ", '" + message + "')");
 
     try {
     } catch (Exception e) {
@@ -570,7 +572,7 @@ public override void OnGlobalChat(String speaker, String message) {
 
 public override void OnTeamChat(String speaker, String message, int teamId) {
     if (!fIsEnabled) return;
-    if (DebugLevel >= 8) ConsoleDebug("OnTeamChat(" + speaker + ", '" + message + "', " +teamId + ")");
+    if (DebugLevel >= 11) ConsoleDebug("OnTeamChat(" + speaker + ", '" + message + "', " +teamId + ")");
 
     try {
     } catch (Exception e) {
@@ -590,7 +592,7 @@ public override void OnSquadChat(String speaker, String message, int teamId, int
 public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnRoundOverPlayers^n", 7);
+    DebugWrite("^5Got OnRoundOverPlayers^n", 7);
 
     try {
         // TBD
@@ -602,7 +604,7 @@ public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
 public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnRoundOverTeamScores^n", 7);
+    DebugWrite("^5Got OnRoundOverTeamScores^n", 7);
 
     try {
     } catch (Exception e) {
@@ -613,7 +615,7 @@ public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
 public override void OnRoundOver(int winningTeamId) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnRoundOver^n: winner " + winningTeamId, 7);
+    DebugWrite("^5Got OnRoundOver^n: winner " + winningTeamId, 7);
 
     try {
 
@@ -635,7 +637,7 @@ public override void OnRoundOver(int winningTeamId) {
 public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnLevelLoaded^n: " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
+    DebugWrite("^5Got OnLevelLoaded^n: " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
 
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -664,13 +666,13 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
 public override void OnEndRound(int iWinningTeamID) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnEndRound^n: " + iWinningTeamID, 7);
+    DebugWrite("^5Got OnEndRound^n: " + iWinningTeamID, 7);
 }
 
 public override void OnRunNextLevel() {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnRunNextLevel^n", 3);
+    DebugWrite("^5Got OnRunNextLevel^n", 3);
 }
 
 
@@ -686,7 +688,7 @@ public override void OnResponseError(List<string> lstRequestWords, string strErr
         int level = 7;
         if (lstRequestWords[0] == "player.ping") level = 8;
 
-        DebugWrite("^9^bGot OnResponseError, " + msg, level);
+        DebugWrite("^5Got OnResponseError, " + msg, level);
 
 
     } catch (Exception e) {
@@ -733,7 +735,7 @@ private void StopTasks() {
 
 
 private String FormatMessage(String msg, MessageType type, int level) {
-    String prefix = "[^b" + GetPluginName() + "^n]:" + level + " ";
+    String prefix = "^n^0[^b" + GetPluginName() + "^n]:" + level + " ";
 
     if (Thread.CurrentThread.Name != null) prefix += "Thread(^b^5" + Thread.CurrentThread.Name + "^0^n): ";
 
@@ -744,7 +746,7 @@ private String FormatMessage(String msg, MessageType type, int level) {
     else if (type.Equals(MessageType.Exception))
         prefix += "^1^bEXCEPTION^0^n: ";
     else if (type.Equals(MessageType.Debug))
-        prefix += "^9^bDEBUG^n: ";
+        prefix += "^5DEBUG^0^n: ";
 
     return prefix + msg.Replace('{','(').Replace('}',')') + "^n"; // close styling for every line with ^n
 }
@@ -850,10 +852,7 @@ private void UpdateLoadScreenDuration() {
     if (fLevelLoadTimestamp == DateTime.MinValue) return;
     double secs = DateTime.Now.Subtract(fLevelLoadTimestamp).TotalSeconds;
     fLevelLoadTimestamp = DateTime.MinValue;
-    if (secs < 10) {
-        DebugWrite("Load level less than 10 seconds (" + secs.ToString("F0") + "), skipping", 3);
-        return;
-    } else if (secs > 180) { // 3 mins
+    if (secs > 180) { // 3 mins
         DebugWrite("Load level greater than 180 seconds (" + secs.ToString("F0") + "), skipping", 3);
         return;
     }
