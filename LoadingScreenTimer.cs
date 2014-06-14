@@ -156,7 +156,7 @@ public LoadingScreenTimer() {
     /* Settings */
 
     MinimumPlayers = 4;
-    MaximumLoadingSeconds = 60;
+    MaximumLoadingSeconds = 35;
     LoadSucceededEvent = LoadedEvent.OnFirstTeamChange;
     TimeExpiredCommand = "mapList.runNextRound";
     DebugLoggingLevel = LogLevel.None;
@@ -624,11 +624,11 @@ public override void OnRoundOver(int winningTeamId) {
 
     try {
 
-        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 4);
         if (fServerInfo != null)
             ConsoleDebug("Was map/mode: " + fServerInfo.Map + "/" + fServerInfo.GameMode);
     
-        if (fGameState == GameState.Playing || fGameState == GameState.Unknown || fGameState == GameState.Deploying || fGameState == GameState.RoundStarting) {
+        if (fGameState != GameState.RoundEnding) {
             fGameState = GameState.RoundEnding;
             DebugWrite("OnRoundOver: ^b^3Game state = " + fGameState, 6);
             StopTasks();
@@ -649,7 +649,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
-        if (fGameState == GameState.RoundEnding || (fGameState == GameState.Warmup && TotalPlayerCount() >= 4) || fGameState == GameState.Unknown) {
+        if (fGameState != GameState.RoundStarting) {
             fGameState = GameState.RoundStarting;
             DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);
 
@@ -689,7 +689,7 @@ public override void OnRunNextLevel() {
 public override void OnCurrentLevel(string mapFileName) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnCurrentLevel^n", 3);
+    DebugWrite("^5Got OnCurrentLevel^n, " + mapFileName, 3);
     if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("currentLevel")) {
         ConsoleWarn("^0^n^bPOSSIBLE LOADING SCREEN PROBLEM: information only, no action taken ...");
         StopTasks();
@@ -969,9 +969,9 @@ You get to decide how long it should take to load the next level.</p>
 
 <p><b>Maximum Loading Seconds</b>: The maximum number of seconds you expect a level load to take. Should be between 15 and 60 seconds.</p>
 
-<p><b>Load Succeeded Event</b>: Choose whether a successful load is determined by the first team change event after a load, or the first player spawn. The first team change event is the earliest point by which a player comes out of the loading screen. The first player spawn comes later but insures that the level has loaded successfully. Using OnFirstTeamChange is recommended.</p>>
+<p><b>Load Succeeded Event</b>: Choose whether a successful load is determined by the first team change event after a load, or the first player spawn. The first team change event is the earliest point by which a player comes out of the loading screen. The first player spawn comes later but insures that the level has loaded successfully. Using OnFirstTeamChange is recommended.</p>
 
-<p><b>Time Expired Command</b>: The command to use to remedy the situation if the level load takes too much time. The recommended command is <b>mapList.runNextRound</b>. If you just want to test this plugin without affecting the server, change the command to <b>currentLevel</b>.</p>
+<p><b>Time Expired Command</b>: The command to use to remedy the situation if the level load takes too much time. The recommended command is <b>mapList.runNextRound</b>. If you just want to use this plugin as a way to detect getting stuck in a black loading screen, without affecting the server, change the command to <b>currentLevel</b>.</p>
 
 <p><b>Debug Logging Level</b>: Specifies how much debug logging you want: None, Limited (just the most critical events), or All (all events impacting the workings of this plugin).</p>
 ";
