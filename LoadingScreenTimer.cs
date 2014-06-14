@@ -65,11 +65,13 @@ public enum MessageType { Warning, Error, Exception, Normal, Debug };
         
 public enum PluginState { Disabled, JustEnabled, Active, Error, Reconnected };
     
-public enum GameState { RoundEnding, RoundStarting, Playing, Warmup, Unknown };
+public enum GameState { RoundEnding, RoundStarting, Deploying, Playing, Warmup, Unknown };
 
 public enum ChatScope {Global, Team, Squad, Player};
 
-public enum LoadedEvent {OnTeamChange, OnFirstSpawn};
+public enum LoadedEvent {OnFirstTeamChange, OnFirstSpawn};
+
+public enum LogLevel {None, Limited, All};
 
 // General
 private bool fIsEnabled;
@@ -83,6 +85,11 @@ private String fPort;
 private DateTime fRoundOverTimestamp = DateTime.MinValue;
 private DateTime fRoundStartTimestamp = DateTime.Now;
 private DateTime fLastServerInfoTimestamp = DateTime.MinValue;
+private DateTime fLevelLoadTimestamp = DateTime.MinValue;
+private double fTotalLoadLevelSeconds = 0;
+private double fTotalLoadLevelRounds = 0;
+private int fTaskId;
+private bool fTaskScheduled;
 
 private PluginState fPluginState;
 private GameState fGameState;
@@ -98,7 +105,8 @@ public int MinimumPlayers;
 public int MaximumLoadingSeconds;
 public LoadedEvent LoadSucceededEvent;
 public String TimeExpiredCommand;
-public bool EnableDebugLogging;
+//public bool EnableDebugLogging;
+public LogLevel DebugLoggingLevel;
 public int DebugLevel = 0; // hidden
 
 
@@ -116,6 +124,11 @@ public LoadingScreenTimer() {
     fRoundOverTimestamp = DateTime.MinValue;
     fRoundStartTimestamp = DateTime.Now;
     fLastServerInfoTimestamp = DateTime.MinValue;
+    fLevelLoadTimestamp = DateTime.MinValue;
+    fTotalLoadLevelSeconds = 0;
+    fTotalLoadLevelRounds = 0;
+    fTaskId = 100;
+    fTaskScheduled = false;
 
     fEasyTypeDict = new Dictionary<int, Type>();
     fEasyTypeDict.Add(0, typeof(int));
@@ -142,15 +155,15 @@ public LoadingScreenTimer() {
 
     MinimumPlayers = 4;
     MaximumLoadingSeconds = 60;
-    LoadSucceededEvent = LoadedEvent.OnTeamChange;
+    LoadSucceededEvent = LoadedEvent.OnFirstTeamChange;
     TimeExpiredCommand = "mapList.runNextRound";
-    EnableDebugLogging = false;
+    DebugLoggingLevel = LogLevel.None;
 }
 
 
 
 public String GetPluginName() {
-    return "LoadingScreenTimer";
+    return "Loading Screen Timer";
 }
 
 public String GetPluginVersion() {
@@ -194,7 +207,11 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         lstReturn.Add(new CPluginVariable("Time Expired Command", TimeExpiredCommand.GetType(), TimeExpiredCommand));
 
-        lstReturn.Add(new CPluginVariable("Enable Debug Logging", EnableDebugLogging.GetType(), EnableDebugLogging));
+        var_name = "Debug Logging Level";
+
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(LogLevel))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(LogLevel), DebugLoggingLevel)));
 
     } catch (Exception e) {
         ConsoleException(e);
@@ -236,18 +253,21 @@ public void SetPluginVariable(String strVariable, String strValue) {
 
         if (field != null) {
             fieldType = field.GetValue(this).GetType();
-            if (false) {
-            /*
-            if (strVariable.Contains("preset")) {
-                fieldType = typeof(PresetItems);
+
+            if (strVariable.Contains("Event")) {
+                fieldType = typeof(LoadedEvent);
                 try {
-                    Preset = (PresetItems)Enum.Parse(fieldType, strValue);
-                    isPresetVar = true;
+                    LoadSucceededEvent = (LoadedEvent)Enum.Parse(fieldType, strValue);
                 } catch (Exception e) {
                     ConsoleException(e);
                 }
-            } 
-            */
+            } else if (strVariable.Contains("Debug")) {
+                fieldType = typeof(LogLevel);
+                try {
+                    DebugLoggingLevel = (LogLevel)Enum.Parse(fieldType, strValue);
+                } catch (Exception e) {
+                    ConsoleException(e);
+                }
             } else if (fEasyTypeDict.ContainsValue(fieldType)) {
                 field.SetValue(this, TypeDescriptor.GetConverter(fieldType).ConvertFromString(strValue));
             } else if (fListStrDict.ContainsValue(fieldType)) {
@@ -267,7 +287,7 @@ public void SetPluginVariable(String strVariable, String strValue) {
                 }
                 */
             } else if (fBoolDict.ContainsValue(fieldType)) {
-                if (fIsEnabled) DebugWrite(propertyName + " strValue = " + strValue, 6);
+                //if (fIsEnabled) DebugWrite(propertyName + " strValue = " + strValue, 6);
                 if (Regex.Match(strValue, "true", RegexOptions.IgnoreCase).Success) {
                     field.SetValue(this, true);
                 } else {
@@ -280,6 +300,12 @@ public void SetPluginVariable(String strVariable, String strValue) {
     } catch (System.Exception e) {
         ConsoleException(e);
     } finally {
+        switch (DebugLoggingLevel) {
+            case LogLevel.None: DebugLevel = 0; break;
+            case LogLevel.Limited: DebugLevel = 3; break;
+            case LogLevel.All: DebugLevel = 10; break;
+            default: break;
+        }
         /*
 
         // Validate all values and correct if needed
@@ -326,7 +352,7 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
     this.RegisterEvents(this.GetType().Name, 
         "OnVersion",
         "OnServerInfo",
-        "OnPlayerKilled",
+        //"OnPlayerKilled",
         "OnPlayerSpawned",
         "OnPlayerTeamChange",
         "OnPlayerSquadChange",
@@ -406,7 +432,21 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
     if (fPluginState == PluginState.Disabled || fPluginState == PluginState.Error) return;
 
     try {
+        int totalPlayers = TotalPlayerCount();
+        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
+            bool wasUnknown = (fGameState == GameState.Unknown);
+            fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
+            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerTeamChange: ^b^3Game state = " + fGameState, 6); 
+        } else if (fGameState == GameState.RoundStarting) {
+            // First team change after level loaded may indicate successful load
+            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First team change detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
+            fGameState = (totalPlayers < 4) ? GameState.Warmup :GameState.Deploying;
+
+            if (LoadSucceededEvent == LoadedEvent.OnFirstTeamChange)
+                UpdateLoadScreenDuration();
+
+        }
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -414,7 +454,37 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
 
 
 
+public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) {
+    if (!fIsEnabled) return;
+    
+    DebugWrite("^9^bGot OnPlayerSpawned: ^n" + soldierName, 8);
+    
+    try {
+        int totalPlayers = TotalPlayerCount();
+        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
+            bool wasUnknown = (fGameState == GameState.Unknown);
+            fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
+            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6); 
+        } else if (fGameState == GameState.Deploying) {
+            // First spawn after Level Loaded is the official start of a round
+            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
+            fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
+            DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
+
+            if (LoadSucceededEvent == LoadedEvent.OnFirstSpawn)
+                UpdateLoadScreenDuration();
+
+        }
+    
+        if (fPluginState == PluginState.Active) {
+        }
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+}
+
+/*
 public override void OnPlayerKilled(Kill kKillerVictimDetails) {
     if (!fIsEnabled) return;
 
@@ -437,6 +507,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
         ConsoleException(e);
     }
 }
+*/
 
 
 public override void OnServerInfo(CServerInfo serverInfo) {
@@ -549,7 +620,7 @@ public override void OnRoundOver(int winningTeamId) {
 public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnLevelLoaded^n: " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 7);
+    DebugWrite("^9^bGot OnLevelLoaded^n: " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
 
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -558,38 +629,14 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
             fGameState = GameState.RoundStarting;
             DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);
 
-            //CheckRoundEndingDuration();
+            int totalPlayers = TotalPlayerCount();
+
+            if (totalPlayers >= MinimumPlayers) {
+                fLevelLoadTimestamp = DateTime.Now;
+                StartTimerTask();
+            }
         }
 
-        ServerCommand("serverInfo");
-
-    } catch (Exception e) {
-        ConsoleException(e);
-    }
-}
-
-public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) {
-    if (!fIsEnabled) return;
-    
-    DebugWrite("^9^bGot OnPlayerSpawned: ^n" + soldierName, 8);
-    
-    try {
-        int totalPlayers = TotalPlayerCount();
-        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
-            bool wasUnknown = (fGameState == GameState.Unknown);
-            fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
-            if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6); 
-        } else if (fGameState == GameState.RoundStarting) {
-            // First spawn after Level Loaded is the official start of a round
-            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
-
-            fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
-            DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
-
-        }
-    
-        if (fPluginState == PluginState.Active) {
-        }
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -642,7 +689,11 @@ public override void OnResponseError(List<string> lstRequestWords, string strErr
 
 
 
-
+private void StartTimerTask() {
+    String taskid = "LST" + fTaskId;
+    fTaskId += 1;
+    //this.ExecuteCommand("procon.protected.task.add", taskid, MaximumLoadingSeconds.ToString(), "0", "0", TimeExpiredCommand);
+}
 
 
 private void StopTasks() {
@@ -733,6 +784,9 @@ private void TaskbarNotify(String title, String msg) {
 
 
 public int TotalPlayerCount() {
+    if (fServerInfo != null) {
+        return fServerInfo.PlayerCount;
+    }
     /*
     fPlayerCount = 0;
     if (fGameVersion == GameVersion.BF4) {
@@ -757,7 +811,25 @@ public int TotalPlayerCount() {
     }
     return fPlayerCount;
     */
-    return 0; // TBD
+    return 0;
+}
+
+
+private void UpdateLoadScreenDuration() {
+    if (fLevelLoadTimestamp == DateTime.MinValue) return;
+    double secs = DateTime.Now.Subtract(fLevelLoadTimestamp).TotalSeconds;
+    fLevelLoadTimestamp = DateTime.MinValue;
+    if (secs < 10) {
+        DebugWrite("Load level less than 10 seconds (" + secs.ToString("F0") + "), skipping", 3);
+        return;
+    } else if (secs > 180) { // 3 mins
+        DebugWrite("Load level greater than 180 seconds (" + secs.ToString("F0") + "), skipping", 3);
+        return;
+    }
+    // Sum up for average
+    fTotalLoadLevelSeconds += secs;
+    fTotalLoadLevelRounds += 1;
+    DebugWrite("Load level seconds = " + secs.ToString("F0") + ", average of " + fTotalLoadLevelRounds + " rounds = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
 }
 
 
@@ -856,7 +928,9 @@ public static String ConvertHTMLToVBCode(String html) {
 
 
 public String GetPluginDescription() {
-    return @"<h1>Loading Screen timer</h1>";
+    return @"
+<h1>Loading Screen Timer</h1>
+";
 }
 
 
