@@ -422,7 +422,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
 
     if (fGameState == GameState.Playing && squadId == 0) return;
     
-    DebugWrite("^5Got OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 7);
+    DebugWrite("^5Got OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 11);
 
 }
 
