@@ -430,7 +430,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
 public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 6);
+    DebugWrite("^5Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 11);
 
     if (fPluginState == PluginState.Disabled || fPluginState == PluginState.Error) return;
 
@@ -442,6 +442,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerTeamChange: ^b^3Game state = " + fGameState, 6); 
         } else if (fGameState == GameState.RoundStarting) {
             // First team change after level loaded may indicate successful load
+            DebugWrite("^5Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 8);
             DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First team change detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
             fGameState = (totalPlayers < 4) ? GameState.Warmup :GameState.Deploying;
@@ -463,7 +464,8 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
 public override void OnPlayerSpawned(String soldierName, Inventory spawnedInventory) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnPlayerSpawned: ^n" + soldierName, 8);
+    if (fGameState != GameState.Playing && fGameState != GameState.Warmup)
+        DebugWrite("^5Got OnPlayerSpawned: ^n" + soldierName, 8);
     
     try {
         int totalPlayers = TotalPlayerCount();
@@ -476,7 +478,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
             fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
-            DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
+            DebugWrite("OnPlayerSpawned: ^n" + soldierName + ", ^b^3Game state = " + fGameState, 6);
 
             if (LoadSucceededEvent == LoadedEvent.OnFirstSpawn) {
                 ConsoleWrite("LEVEL LOADED SUCCESSFULLY!", 0);
@@ -522,7 +524,8 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
 public override void OnServerInfo(CServerInfo serverInfo) {
     if (!fIsEnabled || serverInfo == null) return;
 
-    DebugWrite("^5Got OnServerInfo: Debug level = " + DebugLevel + ", " + fGameState + ", " + TotalPlayerCount() + " players", 8);
+    if (fServerInfo == null)
+        DebugWrite("^5Got OnServerInfo: Debug level = " + DebugLevel, 8);
 
     DateTime debugTime = DateTime.Now;
     
@@ -539,6 +542,8 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
             ConsoleDebug("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode);
+        } else if (fGameState == GameState.RoundStarting || fGameState == GameState.Deploying) {
+            DebugWrite("^5Got OnServerInfo: " + fGameState + ", " + TotalPlayerCount() + " players", 6);
         }
 
         if (fTaskTimestamp != DateTime.MinValue) {
@@ -620,6 +625,8 @@ public override void OnRoundOver(int winningTeamId) {
     try {
 
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+        if (fServerInfo != null)
+            ConsoleDebug("Was map/mode: " + fServerInfo.Map + "/" + fServerInfo.GameMode);
     
         if (fGameState == GameState.Playing || fGameState == GameState.Unknown || fGameState == GameState.Deploying || fGameState == GameState.RoundStarting) {
             fGameState = GameState.RoundEnding;
