@@ -89,7 +89,8 @@ private DateTime fLevelLoadTimestamp = DateTime.MinValue;
 private double fTotalLoadLevelSeconds = 0;
 private double fTotalLoadLevelRounds = 0;
 private int fTaskId;
-private bool fTaskScheduled;
+private String fTaskScheduled;
+private DateTime fTaskTimestamp = DateTime.MinValue;
 
 private PluginState fPluginState;
 private GameState fGameState;
@@ -128,7 +129,8 @@ public LoadingScreenTimer() {
     fTotalLoadLevelSeconds = 0;
     fTotalLoadLevelRounds = 0;
     fTaskId = 100;
-    fTaskScheduled = false;
+    fTaskScheduled = null;
+    fTaskTimestamp = DateTime.MinValue;
 
     fEasyTypeDict = new Dictionary<int, Type>();
     fEasyTypeDict.Add(0, typeof(int));
@@ -391,9 +393,8 @@ public void OnPluginDisable() {
 
     try {
         fEnabledTimestamp = DateTime.MinValue;
-
-        ConsoleWrite("^bDisabling, stopping tasks (if any) ...^n", 0);
-
+        
+        ConsoleWrite("^bDisabling, removing tasks ...^n", 0);
         StopTasks();
 
         fPluginState = PluginState.Disabled;
@@ -443,8 +444,11 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
 
             fGameState = (totalPlayers < 4) ? GameState.Warmup :GameState.Deploying;
 
-            if (LoadSucceededEvent == LoadedEvent.OnFirstTeamChange)
+            if (LoadSucceededEvent == LoadedEvent.OnFirstTeamChange) {
+                ConsoleWrite("LEVEL LOADED SUCCESSFULLY!", 0);
+                StopTasks();
                 UpdateLoadScreenDuration();
+            }
 
         }
     } catch (Exception e) {
@@ -472,8 +476,11 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
             DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6);
 
-            if (LoadSucceededEvent == LoadedEvent.OnFirstSpawn)
+            if (LoadSucceededEvent == LoadedEvent.OnFirstSpawn) {
+                ConsoleWrite("LEVEL LOADED SUCCESSFULLY!", 0);
+                StopTasks();
                 UpdateLoadScreenDuration();
+            }
 
         }
     
@@ -530,6 +537,11 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
             ConsoleDebug("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode);
+        }
+
+        if (fTaskTimestamp != DateTime.MinValue) {
+            double elapsedLoadTime = DateTime.Now.Subtract(fTaskTimestamp).TotalSeconds;
+            DebugWrite("OnServerInfo: load level elapsed time in seconds = " + elapsedLoadTime.ToString("F1"), 6);
         }
     
         // Check for server crash
@@ -607,9 +619,12 @@ public override void OnRoundOver(int winningTeamId) {
 
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
     
-        if (fGameState == GameState.Playing || fGameState == GameState.Unknown) {
+        if (fGameState == GameState.Playing || fGameState == GameState.Unknown || fGameState == GameState.Deploying || fGameState == GameState.RoundStarting) {
             fGameState = GameState.RoundEnding;
             DebugWrite("OnRoundOver: ^b^3Game state = " + fGameState, 6);
+            StopTasks();
+        } else if (fGameState == GameState.RoundEnding) {
+            DebugWrite("^1OnLevelLoaded: detected another OnRoundOver event ...", 3);
         }
 
     } catch (Exception e) {
@@ -635,6 +650,8 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
                 fLevelLoadTimestamp = DateTime.Now;
                 StartTimerTask();
             }
+        } else if (fGameState == GameState.RoundStarting) {
+            DebugWrite("^1OnLevelLoaded: detected another OnLevelLoaded event ...", 3);
         }
 
     } catch (Exception e) {
@@ -653,7 +670,7 @@ public override void OnEndRound(int iWinningTeamID) {
 public override void OnRunNextLevel() {
     if (!fIsEnabled) return;
     
-    DebugWrite("^9^bGot OnRunNextLevel^n", 7);
+    DebugWrite("^9^bGot OnRunNextLevel^n", 3);
 }
 
 
@@ -690,14 +707,28 @@ public override void OnResponseError(List<string> lstRequestWords, string strErr
 
 
 private void StartTimerTask() {
-    String taskid = "LST" + fTaskId;
+    if (!String.IsNullOrEmpty(fTaskScheduled)) {
+        DebugWrite("New task " + fTaskId + " replacing " + fTaskScheduled + "!", 3);
+        StopTasks();
+    }
+    fTaskScheduled = "LST" + fTaskId;
     fTaskId += 1;
-    //this.ExecuteCommand("procon.protected.task.add", taskid, MaximumLoadingSeconds.ToString(), "0", "0", TimeExpiredCommand);
+    fTaskTimestamp = DateTime.Now;
+    this.ExecuteCommand("procon.protected.tasks.add", fTaskScheduled, MaximumLoadingSeconds.ToString(), "0", "0", TimeExpiredCommand);
 }
 
 
 private void StopTasks() {
-    // TBD
+    if (String.IsNullOrEmpty(fTaskScheduled))
+        return;
+    DebugWrite("Removing task " + fTaskScheduled, 8);
+    try {
+        this.ExecuteCommand("procon.protected.tasks.remove", fTaskScheduled);
+    } catch (Exception e) {
+        ConsoleException(e);
+    }
+    fTaskScheduled = null;
+    fTaskTimestamp = DateTime.MinValue;
 }
 
 
