@@ -69,6 +69,8 @@ public enum GameState { RoundEnding, RoundStarting, Playing, Warmup, Unknown };
 
 public enum ChatScope {Global, Team, Squad, Player};
 
+public enum LoadedEvent {OnTeamChange, OnFirstSpawn};
+
 // General
 private bool fIsEnabled;
 private bool fAborted = false;
@@ -92,6 +94,10 @@ private Dictionary<int, Type> fBoolDict = null;
 private Dictionary<int, Type> fListStrDict = null;
 
 // Settings
+public int MinimumPlayers;
+public int MaximumLoadingSeconds;
+public LoadedEvent LoadSucceededEvent;
+public String TimeExpiredCommand;
 public bool EnableDebugLogging;
 public int DebugLevel = 0; // hidden
 
@@ -134,8 +140,10 @@ public LoadingScreenTimer() {
     
     /* Settings */
 
-    /* ===== SECTION 0 - Presets ===== */
-
+    MinimumPlayers = 4;
+    MaximumLoadingSeconds = 60;
+    LoadSucceededEvent = LoadedEvent.OnTeamChange;
+    TimeExpiredCommand = "mapList.runNextRound";
     EnableDebugLogging = false;
 }
 
@@ -173,6 +181,18 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
     try {
 
         /* ===== SECTION 9 - Debug Settings ===== */
+        
+        lstReturn.Add(new CPluginVariable("Minimum Players", MinimumPlayers.GetType(), MinimumPlayers));
+
+        lstReturn.Add(new CPluginVariable("Maximum Loading Seconds", MaximumLoadingSeconds.GetType(), MaximumLoadingSeconds));
+
+        String var_name = "Load Succeeded Event";
+
+        String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(LoadedEvent))) + ")";
+        
+        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(LoadedEvent), LoadSucceededEvent)));
+
+        lstReturn.Add(new CPluginVariable("Time Expired Command", TimeExpiredCommand.GetType(), TimeExpiredCommand));
 
         lstReturn.Add(new CPluginVariable("Enable Debug Logging", EnableDebugLogging.GetType(), EnableDebugLogging));
 
