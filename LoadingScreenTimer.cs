@@ -710,10 +710,11 @@ public override void OnResponseError(List<string> lstRequestWords, string strErr
 
 private void StartTimerTask() {
     if (!String.IsNullOrEmpty(fTaskScheduled)) {
-        DebugWrite("New task " + fTaskId + " replacing " + fTaskScheduled + "!", 3);
+        DebugWrite("^6New task " + fTaskId + " replacing " + fTaskScheduled + "!", 3);
         StopTasks();
     }
     fTaskScheduled = "LST" + fTaskId;
+    DebugWrite("^6Starting task " + fTaskScheduled + " for " + MaximumLoadingSeconds + " seconds, expiring with command: " + TimeExpiredCommand, 3);
     fTaskId += 1;
     fTaskTimestamp = DateTime.Now;
     this.ExecuteCommand("procon.protected.tasks.add", fTaskScheduled, MaximumLoadingSeconds.ToString(), "0", "0", TimeExpiredCommand);
@@ -723,7 +724,7 @@ private void StartTimerTask() {
 private void StopTasks() {
     if (String.IsNullOrEmpty(fTaskScheduled))
         return;
-    DebugWrite("Removing task " + fTaskScheduled, 8);
+    DebugWrite("^6Removing task " + fTaskScheduled, 3);
     try {
         this.ExecuteCommand("procon.protected.tasks.remove", fTaskScheduled);
     } catch (Exception e) {
@@ -820,30 +821,7 @@ public int TotalPlayerCount() {
     if (fServerInfo != null) {
         return fServerInfo.PlayerCount;
     }
-    /*
-    fPlayerCount = 0;
-    if (fGameVersion == GameVersion.BF4) {
-        fBF4CommanderCount = 0;
-        fBF4SpectatorCount = 0;
 
-        lock (fAllPlayers) {
-            foreach (String name in fAllPlayers) {
-                PlayerModel p = GetPlayer(name);
-                if (p == null) continue;
-                if (p.Role == ROLE_PLAYER) {
-                    ++fPlayerCount;
-                } else if (p.Role == ROLE_COMMANDER_PC || p.Role == ROLE_COMMANDER_MOBILE) {
-                    ++fBF4CommanderCount;
-                } else if (p.Role == ROLE_SPECTATOR) {
-                    ++fBF4SpectatorCount;
-                }
-            }
-        }
-    } else {
-        //lock (fAllPlayers) {fPlayerCount = fAllPlayers.Count;}
-    }
-    return fPlayerCount;
-    */
     return 0;
 }
 
