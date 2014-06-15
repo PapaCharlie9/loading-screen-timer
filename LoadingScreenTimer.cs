@@ -173,7 +173,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.0.0";
+    return "1.0.0.1";
 }
 
 public String GetPluginAuthor() {
@@ -875,7 +875,7 @@ private void UpdateLoadScreenDuration() {
     fTotalLoadLevelRounds += 1;
     if (secs > fTotalLoadLevelMax)
         fTotalLoadLevelMax = secs;
-    DebugWrite("Load level seconds = " + secs.ToString("F0") + ", highest of " + fTotalLoadLevelRounds + " rounds = " + fTotalLoadLevelMax + ", average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
+    DebugWrite("Load level seconds = " + secs.ToString("F0") + ", highest of " + fTotalLoadLevelRounds + " rounds = " + fTotalLoadLevelMax.ToString("F1") + ", average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
 }
 
 
