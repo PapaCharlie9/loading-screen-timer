@@ -92,6 +92,7 @@ private int fTaskId;
 private String fTaskScheduled;
 private DateTime fTaskTimestamp = DateTime.MinValue;
 private bool fTest;
+private double fTotalLoadLevelMax = 0;
 
 private PluginState fPluginState;
 private GameState fGameState;
@@ -133,6 +134,7 @@ public LoadingScreenTimer() {
     fTaskScheduled = null;
     fTaskTimestamp = DateTime.MinValue;
     fTest = false;
+    fTotalLoadLevelMax = 0;
 
     fEasyTypeDict = new Dictionary<int, Type>();
     fEasyTypeDict.Add(0, typeof(int));
@@ -389,7 +391,7 @@ public void OnPluginEnable() {
     ServerCommand("serverInfo");
 
     // Send out test command
-    DebugWrite("^6Launching test task LST000 for 5 seconds", 3);
+    DebugWrite("^6Launching test task LST000 for 5 seconds, command: currentLevel", 3);
     fTest = true;
     //this.ExecuteCommand("procon.protected.tasks.add", "LST001", "5", "1", "1", "procon.protected.pluginconsole.write", "LST TEST!");
     this.ExecuteCommand("procon.protected.tasks.add", "LST000", "5", "1", "1", "procon.protected.send", "currentLevel");
@@ -401,6 +403,9 @@ public void OnPluginDisable() {
 
     try {
         fEnabledTimestamp = DateTime.MinValue;
+        fTotalLoadLevelMax = 0;
+        fTotalLoadLevelRounds = 0;
+        fTotalLoadLevelSeconds = 0;
         
         if (fTaskScheduled != null) {
             ConsoleWrite("^bDisabling, removing tasks ...^n", 0);
@@ -451,7 +456,8 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
         } else if (fGameState == GameState.RoundStarting) {
             // First team change after level loaded may indicate successful load
             DebugWrite("^5Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 8);
-            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First team change detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+            if (LoadSucceededEvent == LoadedEvent.OnFirstTeamChange || DebugLevel > 3)
+                DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First team change detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
             fGameState = (totalPlayers < 4) ? GameState.Warmup :GameState.Deploying;
 
@@ -483,7 +489,8 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6); 
         } else if (fGameState == GameState.Deploying) {
             // First spawn after Level Loaded is the official start of a round
-            DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+            if (LoadSucceededEvent == LoadedEvent.OnFirstSpawn || DebugLevel > 3)
+                DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First spawn detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
             fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
             DebugWrite("OnPlayerSpawned: ^n" + soldierName + ", ^b^3Game state = " + fGameState, 6);
@@ -689,7 +696,7 @@ public override void OnRunNextLevel() {
     
     DebugWrite("^5Got OnRunNextLevel^n", 3);
     if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("runNextRound")) {
-        ConsoleWarn("^0^n^bPOSSIBLE LOADING SCREEN PROBLEM: attempting to run next round ...");
+        ConsoleWarn("^8^n^b^8POSSIBLE LOADING SCREEN PROBLEM: attempting to run next round ...");
     }
 }
 
@@ -863,10 +870,12 @@ private void UpdateLoadScreenDuration() {
         DebugWrite("Load level greater than 180 seconds (" + secs.ToString("F0") + "), skipping", 3);
         return;
     }
-    // Sum up for average
+    // take max
     fTotalLoadLevelSeconds += secs;
     fTotalLoadLevelRounds += 1;
-    DebugWrite("Load level seconds = " + secs.ToString("F0") + ", average of " + fTotalLoadLevelRounds + " rounds = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
+    if (secs > fTotalLoadLevelMax)
+        fTotalLoadLevelMax = secs;
+    DebugWrite("Load level seconds = " + secs.ToString("F0") + ", highest of " + fTotalLoadLevelRounds + " rounds = " + fTotalLoadLevelMax + ", average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
 }
 
 
