@@ -63,7 +63,7 @@ public enum GameVersion { BF3, BF4 };
 
 public enum MessageType { Warning, Error, Exception, Normal, Debug };
         
-public enum PluginState { Disabled, JustEnabled, Active, Error, Reconnected };
+public enum PluginState { Disabled, JustEnabled, Active, Error, Reconnected, AttemptingRemedy };
     
 public enum GameState { RoundEnding, RoundStarting, Deploying, Playing, Warmup, Unknown };
 
@@ -411,6 +411,7 @@ public void OnPluginDisable() {
             ConsoleWrite("^bDisabling, removing tasks ...^n", 0);
             StopTasks();
         }
+        fLevelLoadTimestamp = DateTime.MinValue;
 
         fPluginState = PluginState.Disabled;
         fGameState = GameState.Unknown;
@@ -471,6 +472,8 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
     } catch (Exception e) {
         ConsoleException(e);
     }
+    if (fGameState != GameState.Unknown && fPluginState == PluginState.JustEnabled)
+        fPluginState = PluginState.Active;
 }
 
 
@@ -483,6 +486,11 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
     
     try {
         int totalPlayers = TotalPlayerCount();
+        if (fPluginState == PluginState.AttemptingRemedy) {
+            // Something is very wrong, no spawn should be possible after a remedy is attempted
+            ConsoleWarn("^8Attempt to remedy loading screen problem may have failed ... consider restarting server!");
+            fPluginState = PluginState.Error;
+        }
         if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
             bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
@@ -499,6 +507,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
                 ConsoleWrite("LEVEL LOADED SUCCESSFULLY!", 0);
                 StopTasks();
                 UpdateLoadScreenDuration();
+                fPluginState = PluginState.Active;
             }
 
         }
@@ -508,6 +517,8 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
     } catch (Exception e) {
         ConsoleException(e);
     }
+    if (fGameState != GameState.Unknown && fPluginState == PluginState.JustEnabled)
+        fPluginState = PluginState.Active;
 }
 
 /*
@@ -561,9 +572,16 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             DebugWrite("^5Got OnServerInfo: " + fGameState + ", " + TotalPlayerCount() + " players", 6);
         }
 
-        if (fTaskTimestamp != DateTime.MinValue) {
-            double elapsedLoadTime = DateTime.Now.Subtract(fTaskTimestamp).TotalSeconds;
+        if (fGameState != GameState.Unknown && fPluginState == PluginState.JustEnabled)
+            fPluginState = PluginState.Active;
+
+        if (fLevelLoadTimestamp != DateTime.MinValue) {
+            double elapsedLoadTime = DateTime.Now.Subtract(fLevelLoadTimestamp).TotalSeconds;
             DebugWrite("OnServerInfo: load level elapsed time in seconds = " + elapsedLoadTime.ToString("F1"), 6);
+            if (fPluginState == PluginState.AttemptingRemedy && elapsedLoadTime > 60) {
+                DebugWrite("^1Attempted remedy is taking too long, > 60 seconds ...", 3);
+                fPluginState = (TotalPlayerCount() >= MinimumPlayers) ? PluginState.Error : PluginState.Active;
+            }
         }
     
         // Check for server crash
@@ -654,15 +672,22 @@ public override void OnRoundOver(int winningTeamId) {
     } catch (Exception e) {
         ConsoleException(e);
     }
+    if (fGameState != GameState.Unknown && fPluginState == PluginState.JustEnabled)
+        fPluginState = PluginState.Active;
 }
 
 public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnLevelLoaded^n: " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
+    DebugWrite("^5Got OnLevelLoaded^n: " + TotalPlayerCount() + " players, " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
 
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+
+        if (fPluginState == PluginState.AttemptingRemedy) {
+            DebugWrite("New level loaded as an attempted remedy", 4);
+            fPluginState = PluginState.Active;
+        }
 
         if (fGameState != GameState.RoundStarting) {
             fGameState = GameState.RoundStarting;
@@ -697,7 +722,9 @@ public override void OnRunNextLevel() {
     DebugWrite("^5Got OnRunNextLevel^n", 3);
     if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("runNextRound")) {
         ConsoleWarn("^8^n^b^8POSSIBLE LOADING SCREEN PROBLEM: attempting to run next round ...");
+        fPluginState = PluginState.AttemptingRemedy;
     }
+    StopTasks();
 }
 
 
@@ -709,6 +736,20 @@ public override void OnCurrentLevel(string mapFileName) {
         ConsoleWarn("^0^n^bPOSSIBLE LOADING SCREEN PROBLEM: information only, no action taken ...");
         StopTasks();
     }
+}
+
+public override void OnRestartLevel() {
+    if (!fIsEnabled) return;
+
+    String msg = (!String.IsNullOrEmpty(fTaskScheduled)) ? " during scheduled task " + fTaskScheduled : " with no task scheduled";
+    
+    DebugWrite("^5Got OnRestartLevel " + msg, 3);
+
+    if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("restartRound")) {
+        ConsoleWarn("^8^n^b^8POSSIBLE LOADING SCREEN PROBLEM: attempting to restart round ...");
+        fPluginState = PluginState.AttemptingRemedy;
+    }
+    StopTasks();
 }
 
 
@@ -748,6 +789,10 @@ private void StartTimerTask() {
     if (!String.IsNullOrEmpty(fTaskScheduled)) {
         DebugWrite("^6New task " + fTaskId + " replacing " + fTaskScheduled + "!", 3);
         StopTasks();
+    }
+    if (fPluginState != PluginState.Active && fPluginState != PluginState.JustEnabled) {
+        DebugWrite("^1Unable to start new timer task, plugin state is " + fPluginState, 3);
+        return;
     }
     fTaskScheduled = "LST" + fTaskId;
     DebugWrite("^6Starting task " + fTaskScheduled + " for " + MaximumLoadingSeconds + " seconds, expiring with command: " + TimeExpiredCommand, 3);
@@ -868,6 +913,9 @@ private void UpdateLoadScreenDuration() {
     fLevelLoadTimestamp = DateTime.MinValue;
     if (secs > 180) { // 3 mins
         DebugWrite("Load level greater than 180 seconds (" + secs.ToString("F0") + "), skipping", 3);
+        return;
+    } else if (fPluginState != PluginState.Active) {
+        DebugWrite("Plugin in unexpected state, skipping level load timing statistics", 4);
         return;
     }
     // take max
