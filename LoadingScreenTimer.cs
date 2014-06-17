@@ -504,7 +504,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             DebugWrite("OnPlayerSpawned: ^n" + soldierName + ", ^b^3Game state = " + fGameState, 6);
 
             if (LoadSucceededEvent == LoadedEvent.OnFirstSpawn) {
-                ConsoleWrite("LEVEL LOADED SUCCESSFULLY!", 0);
+                ConsoleWrite("^b^2LEVEL LOADED SUCCESSFULLY!", 0);
                 StopTasks();
                 UpdateLoadScreenDuration();
                 fPluginState = PluginState.Active;
