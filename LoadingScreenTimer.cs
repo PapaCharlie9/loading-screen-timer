@@ -202,17 +202,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
     try {
 
         /* ===== SECTION 9 - Debug Settings ===== */
+
+        String var_name;
+        String var_type;
         
         lstReturn.Add(new CPluginVariable("Minimum Players", MinimumPlayers.GetType(), MinimumPlayers));
 
         lstReturn.Add(new CPluginVariable("Maximum Loading Seconds", MaximumLoadingSeconds.GetType(), MaximumLoadingSeconds));
-
-        String var_name = "Load Succeeded Event";
-
-        String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(LoadedEvent))) + ")";
-        
-        if (DebugLoggingLevel == LogLevel.All)
-            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(LoadedEvent), LoadSucceededEvent)));
 
         lstReturn.Add(new CPluginVariable("Time Expired Command", TimeExpiredCommand.GetType(), TimeExpiredCommand));
 
@@ -221,6 +217,13 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(LogLevel))) + ")";
         
         lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(LogLevel), DebugLoggingLevel)));
+
+        var_name = "Load Succeeded Event";
+
+        var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(LoadedEvent))) + ")";
+        
+        if (DebugLoggingLevel == LogLevel.All)
+            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(LoadedEvent), LoadSucceededEvent)));
 
     } catch (Exception e) {
         ConsoleException(e);
