@@ -93,6 +93,7 @@ private String fTaskScheduled;
 private DateTime fTaskTimestamp = DateTime.MinValue;
 private bool fTest;
 private double fTotalLoadLevelMax = 0;
+private GameState fLastGameState;
 
 private PluginState fPluginState;
 private GameState fGameState;
@@ -135,6 +136,7 @@ public LoadingScreenTimer() {
     fTaskTimestamp = DateTime.MinValue;
     fTest = false;
     fTotalLoadLevelMax = 0;
+    fLastGameState = GameState.Unknown;
 
     fEasyTypeDict = new Dictionary<int, Type>();
     fEasyTypeDict.Add(0, typeof(int));
@@ -173,7 +175,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.0.1";
+    return "1.0.0.2";
 }
 
 public String GetPluginAuthor() {
@@ -415,6 +417,7 @@ public void OnPluginDisable() {
 
         fPluginState = PluginState.Disabled;
         fGameState = GameState.Unknown;
+        fLastGameState = GameState.Unknown;
         DebugWrite("^b^3State = " + fPluginState, 6);
         DebugWrite("^b^3Game state = " + fGameState, 6);
     } catch (Exception e) {
@@ -472,7 +475,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
     } catch (Exception e) {
         ConsoleException(e);
     }
-    if (fGameState != GameState.Unknown && fPluginState == PluginState.JustEnabled)
+    if (fGameState != GameState.Unknown && (fPluginState == PluginState.JustEnabled || fPluginState == PluginState.Reconnected))
         fPluginState = PluginState.Active;
 }
 
@@ -491,7 +494,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             ConsoleWarn("^8Attempt to remedy loading screen problem may have failed ... consider restarting server!");
             fPluginState = PluginState.Error;
         }
-        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup) {
+        if (fGameState == GameState.Unknown || fGameState == GameState.Warmup || fGameState == GameState.RoundStarting) {
             bool wasUnknown = (fGameState == GameState.Unknown);
             fGameState = (totalPlayers < 4) ? GameState.Warmup : GameState.Playing;
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerSpawned: ^b^3Game state = " + fGameState, 6); 
@@ -517,7 +520,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
     } catch (Exception e) {
         ConsoleException(e);
     }
-    if (fGameState != GameState.Unknown && fPluginState == PluginState.JustEnabled)
+    if (fGameState != GameState.Unknown && (fPluginState == PluginState.JustEnabled || fPluginState == PluginState.Reconnected))
         fPluginState = PluginState.Active;
 }
 
@@ -566,21 +569,23 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
         }
 
+        int totalPlayerCount = TotalPlayerCount();
+
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
             ConsoleDebug("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode);
-        } else if (fGameState == GameState.RoundStarting || fGameState == GameState.Deploying) {
-            DebugWrite("^5Got OnServerInfo: " + fGameState + ", " + TotalPlayerCount() + " players", 6);
+        } else if (totalPlayerCount > 0 && (fGameState == GameState.RoundStarting || fGameState == GameState.Deploying)) {
+            DebugWrite("^5Got OnServerInfo: " + fGameState + ", " + totalPlayerCount + " players", 6);
         }
 
-        if (fGameState != GameState.Unknown && fPluginState == PluginState.JustEnabled)
+        if (fGameState != GameState.Unknown && (fPluginState == PluginState.JustEnabled || fPluginState == PluginState.Reconnected))
             fPluginState = PluginState.Active;
 
-        if (fLevelLoadTimestamp != DateTime.MinValue) {
+        if (fLevelLoadTimestamp != DateTime.MinValue && totalPlayerCount >= MinimumPlayers) {
             double elapsedLoadTime = DateTime.Now.Subtract(fLevelLoadTimestamp).TotalSeconds;
             DebugWrite("OnServerInfo: load level elapsed time in seconds = " + elapsedLoadTime.ToString("F1"), 6);
             if (fPluginState == PluginState.AttemptingRemedy && elapsedLoadTime > 60) {
                 DebugWrite("^1Attempted remedy is taking too long, > 60 seconds ...", 3);
-                fPluginState = (TotalPlayerCount() >= MinimumPlayers) ? PluginState.Error : PluginState.Active;
+                fPluginState = PluginState.Error;
             }
         }
     
@@ -591,6 +596,19 @@ public override void OnServerInfo(CServerInfo serverInfo) {
         }
         fServerInfo = serverInfo;
         fServerUptime = serverInfo.ServerUptime;
+
+        if (fServerCrashed) {
+            StopTasks();
+            fLevelLoadTimestamp = DateTime.MinValue;
+            fGameState = GameState.Unknown;
+            fPluginState = PluginState.Reconnected;
+            fServerCrashed = false;
+        }
+
+        if (fGameState != fLastGameState) {
+            ConsoleDebug("Game state changed from " + fLastGameState + " to " + fGameState);
+            fLastGameState = fGameState;
+        }
 
     } catch (Exception e) {
         ConsoleException(e);
@@ -672,7 +690,7 @@ public override void OnRoundOver(int winningTeamId) {
     } catch (Exception e) {
         ConsoleException(e);
     }
-    if (fGameState != GameState.Unknown && fPluginState == PluginState.JustEnabled)
+    if (fGameState != GameState.Unknown && (fPluginState == PluginState.JustEnabled || fPluginState == PluginState.Reconnected))
         fPluginState = PluginState.Active;
 }
 
@@ -790,7 +808,7 @@ private void StartTimerTask() {
         DebugWrite("^6New task " + fTaskId + " replacing " + fTaskScheduled + "!", 3);
         StopTasks();
     }
-    if (fPluginState != PluginState.Active && fPluginState != PluginState.JustEnabled) {
+    if (fPluginState != PluginState.Active && fPluginState != PluginState.JustEnabled && fPluginState != PluginState.Reconnected) {
         DebugWrite("^1Unable to start new timer task, plugin state is " + fPluginState, 3);
         return;
     }
