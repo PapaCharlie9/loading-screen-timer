@@ -211,7 +211,8 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
 
         String var_type = "enum." + var_name + "(" + String.Join("|", Enum.GetNames(typeof(LoadedEvent))) + ")";
         
-        lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(LoadedEvent), LoadSucceededEvent)));
+        if (DebugLoggingLevel == LogLevel.All)
+            lstReturn.Add(new CPluginVariable(var_name, var_type, Enum.GetName(typeof(LoadedEvent), LoadSucceededEvent)));
 
         lstReturn.Add(new CPluginVariable("Time Expired Command", TimeExpiredCommand.GetType(), TimeExpiredCommand));
 
@@ -1052,7 +1053,9 @@ You get to decide how long it should take to load the next level.</p>
 
 <p><b>Maximum Loading Seconds</b>: The maximum number of seconds you expect a level load to take. Should be between 15 and 60 seconds.</p>
 
+<!--
 <p><b>Load Succeeded Event</b>: Choose whether a successful load is determined by the first team change event after a load, or the first player spawn. The first team change event is the earliest point by which a player comes out of the loading screen. The first player spawn comes later but insures that the level has loaded successfully. Using OnFirstSpawn is recommended.</p>
+-->
 
 <p><b>Time Expired Command</b>: The command to use to remedy the situation if the level load takes too much time. The recommended command is <b>mapList.runNextRound</b>. If you just want to use this plugin as a way to detect getting stuck in a black loading screen, without affecting the server, change the command to <b>currentLevel</b>.</p>
 
