@@ -161,7 +161,7 @@ public LoadingScreenTimer() {
     
     /* Settings */
 
-    MinimumPlayers = 4;
+    MinimumPlayers = 8;
     MaximumLoadingSeconds = 35;
     LoadSucceededEvent = LoadedEvent.OnFirstSpawn;
     TimeExpiredCommand = "mapList.runNextRound";
@@ -175,7 +175,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.0.2";
+    return "1.0.0.3";
 }
 
 public String GetPluginAuthor() {
