@@ -548,7 +548,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             if (totalPlayers >= 4 && fFirstSpawnTimestamp != DateTime.MinValue) {
                 if (fLoadedMapMode != null) {
                     double et = DateTime.Now.Subtract(fFirstSpawnTimestamp).TotalSeconds;
-                    DebugWrite("^4TIME: Seconds between load of " + fLoadedMapMode + " and first spawn was " + et.ToString("F0"), 3);
+                    DebugWrite("^4TIME: Seconds between load of " + fLoadedMapMode + " and first spawn = " + et.ToString("F0") + " (use for False Positive Adjustment Seconds)", 3);
                     fFirstSpawnTimestamp = DateTime.MinValue;
                     fLoadedMapMode = null;
                 }
@@ -610,7 +610,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             }
         }
 
-        int totalPlayerCount = TotalPlayerCount();
+        int totalPlayerCount = serverInfo.PlayerCount;
 
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
             ConsoleDebug("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode);
@@ -775,7 +775,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
     int totalPlayers = TotalPlayerCount();
     bool skipUpdate = false;
     
-    DebugWrite("^9Got OnLevelLoaded^n: " + totalPlayers + " players, " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
+    DebugWrite("^9Got OnLevelLoaded^n: " + totalPlayers + " players, " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 4);
 
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -1214,9 +1214,9 @@ margin of error to the time used by the plugin.</p>
 
 <p><b>Minimum Players</b>: This plugin is active only if the specified minimum number of players are present in the server.</p>
 
-<p><b>Expected Between Round Seconds</b>: The expected number of seconds between the round over event and the next load level event. Do not use the maximum, use what you would normally expect. Should be from 72 to 75 seconds. This is only a nominal setting used initially. As the plugin records actual times, it will adapt to using those actual times instead.</p>
+<p><b>Expected Between Round Seconds</b>: The expected number of seconds between the round over event and the next load level event. Do not use the maximum, use what you would normally expect. Should be from 60 to 75 seconds. This is only a nominal setting used initially. As the plugin records actual times, it will adapt to using those actual times instead.</p>
 
-<p><b>False Positive Adjustment Seconds</b>: Seconds added to <b>Expected Between Round Seconds</b> or the recorded time for the map/mode, to avoid false positives. Use the maximum number of seconds between the load level event and the first spawn of a player for normal progress. Typically around 10 seconds.</p>
+<p><b>False Positive Adjustment Seconds</b>: Seconds added to <b>Expected Between Round Seconds</b> or the recorded time for the map/mode, to avoid false positives. Use the maximum number of seconds between the load level event and the first spawn of a player for normal progress. Typically from 10 to 20 seconds.</p>
 
 <!--
 <p><b>Load Succeeded Event</b>: Choose whether a successful load is determined by the first team change event after a load, or the first player spawn. The first team change event is the earliest point by which a player comes out of the loading screen. The first player spawn comes later but insures that the level has loaded successfully. Using OnFirstSpawn is recommended.</p>
