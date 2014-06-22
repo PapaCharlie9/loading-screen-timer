@@ -170,7 +170,7 @@ public LoadingScreenTimer() {
 
     MinimumPlayers = 8;
     ExpectedBetweenRoundSeconds = 75;
-    FalsePositiveAdjustmentSeconds = 10;
+    FalsePositiveAdjustmentSeconds = 20;
     LoadSucceededEvent = LoadedEvent.OnFirstSpawn;
     TimeExpiredCommand = "mapList.runNextRound";
     DebugLoggingLevel = LogLevel.None;
@@ -548,7 +548,15 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             if (totalPlayers >= 4 && fFirstSpawnTimestamp != DateTime.MinValue) {
                 if (fLoadedMapMode != null) {
                     double et = DateTime.Now.Subtract(fFirstSpawnTimestamp).TotalSeconds;
-                    DebugWrite("^4TIME: Seconds between load of " + fLoadedMapMode + " and first spawn = " + et.ToString("F0") + " (use for False Positive Adjustment Seconds)", 3);
+                    DebugWrite("^4TIME: Seconds between load of " + fLoadedMapMode + " and first spawn = " + et.ToString("F0"), 3);
+
+                    // take max
+                    fTotalLoadLevelSeconds += et;
+                    fTotalLoadLevelRounds += 1;
+                    if (et > fTotalLoadLevelMax)
+                        fTotalLoadLevelMax = et;
+                    DebugWrite("^4Consider setting ^bFalse Positive Adjustment Seconds^n to " + fTotalLoadLevelMax.ToString("F0") + ", based on " + fTotalLoadLevelRounds + " rounds, average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
+
                     fFirstSpawnTimestamp = DateTime.MinValue;
                     fLoadedMapMode = null;
                 }
@@ -874,10 +882,16 @@ public override void OnMaplistGetMapIndices(int mapIndex, int nextIndex) {
     fNextMapIndex = nextIndex;
 
     MaplistEntry me = null;
+
+    if (fMapList != null && fMapList.Count > mapIndex) {
+        me = fMapList[mapIndex];
+        DebugWrite("Current map index updated to " + mapIndex + ": " + me.MapFileName + "/" + me.Gamemode, 3);
+    }
+
     if (fMapList != null && fMapList.Count > nextIndex) {
         me = fMapList[nextIndex];
+        DebugWrite("Next map index updated to " + nextIndex + ": " + me.MapFileName + "/" + me.Gamemode, 3);
     }
-    DebugWrite("Next map updated to " + me.MapFileName + "/" + me.Gamemode, 3);
 }
 
 
@@ -1092,13 +1106,6 @@ private void UpdateLoadScreenDuration(String map, String mode) {
         DebugWrite("^4TIME: Retaining previous load time for " + key + " = " + last.ToString("F1"), 4);
     }
 
-    // take max
-    fTotalLoadLevelSeconds += secs;
-    fTotalLoadLevelRounds += 1;
-    if (secs > fTotalLoadLevelMax)
-        fTotalLoadLevelMax = secs;
-    DebugWrite("Load level seconds = " + secs.ToString("F0") + ", highest of " + fTotalLoadLevelRounds + " rounds = " + fTotalLoadLevelMax.ToString("F1") + ", average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 5);
-
 }
 
 
@@ -1216,7 +1223,7 @@ margin of error to the time used by the plugin.</p>
 
 <p><b>Expected Between Round Seconds</b>: The expected number of seconds between the round over event and the next load level event. Do not use the maximum, use what you would normally expect. Should be from 60 to 75 seconds. This is only a nominal setting used initially. As the plugin records actual times, it will adapt to using those actual times instead.</p>
 
-<p><b>False Positive Adjustment Seconds</b>: Seconds added to <b>Expected Between Round Seconds</b> or the recorded time for the map/mode, to avoid false positives. Use the maximum number of seconds between the load level event and the first spawn of a player for normal progress. Typically from 10 to 20 seconds.</p>
+<p><b>False Positive Adjustment Seconds</b>: Seconds added to <b>Expected Between Round Seconds</b> or the recorded time for the map/mode, to avoid false positives. Use the maximum number of seconds between the load level event and the first spawn of a player for normal progress. Typically from 10 to 30 seconds.</p>
 
 <!--
 <p><b>Load Succeeded Event</b>: Choose whether a successful load is determined by the first team change event after a load, or the first player spawn. The first team change event is the earliest point by which a player comes out of the loading screen. The first player spawn comes later but insures that the level has loaded successfully. Using OnFirstSpawn is recommended.</p>
