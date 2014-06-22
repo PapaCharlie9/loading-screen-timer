@@ -108,7 +108,7 @@ private Dictionary<int, Type> fListStrDict = null;
 
 // Settings
 public int MinimumPlayers;
-public int MaximumBetweenRoundSeconds;
+public int ExpectedBetweenRoundSeconds;
 public int FalsePositiveAdjustmentSeconds;
 public LoadedEvent LoadSucceededEvent;
 public String TimeExpiredCommand;
@@ -167,7 +167,7 @@ public LoadingScreenTimer() {
     /* Settings */
 
     MinimumPlayers = 8;
-    MaximumBetweenRoundSeconds = 70;
+    ExpectedBetweenRoundSeconds = 70;
     FalsePositiveAdjustmentSeconds = 10;
     LoadSucceededEvent = LoadedEvent.OnFirstSpawn;
     TimeExpiredCommand = "mapList.runNextRound";
@@ -214,7 +214,7 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable("Minimum Players", MinimumPlayers.GetType(), MinimumPlayers));
 
-        lstReturn.Add(new CPluginVariable("Maximum Between Round Seconds", MaximumBetweenRoundSeconds.GetType(), MaximumBetweenRoundSeconds));
+        lstReturn.Add(new CPluginVariable("Expected Between Round Seconds", ExpectedBetweenRoundSeconds.GetType(), ExpectedBetweenRoundSeconds));
 
         lstReturn.Add(new CPluginVariable("False Positive Adjustment Seconds", FalsePositiveAdjustmentSeconds.GetType(), FalsePositiveAdjustmentSeconds));
 
@@ -911,7 +911,7 @@ private void StartTimerTask() {
     if (map != null && mode != null)
         key = map + "/" + mode;
     if (key == null || !fPerMapTime.TryGetValue(key, out adjSecs)) {
-        adjSecs = MaximumBetweenRoundSeconds + FalsePositiveAdjustmentSeconds;
+        adjSecs = ExpectedBetweenRoundSeconds + FalsePositiveAdjustmentSeconds;
     } else {
         adjSecs += FalsePositiveAdjustmentSeconds;
     }
@@ -1178,12 +1178,21 @@ public String GetPluginDescription() {
 <p>Use this plugin if you are having problems with infinite black loading screens.
 If it takes too long to load the next level, you can run a command, such as
 mapList.runNextRound, that might break your server out of the infinite black screen.
-You get to decide how long it should take to load the next level.</p>
+You get to decide how long it should take to load the next level. The plugin records
+the normal amount of time needed to load a level for each map/mode combination
+that the plugin sees, so that over time, instead of using your timer settings, the
+plugin will use the 'nominal' observed settings for your actual maps. This means
+that the plugin adapts to map/modes in your rotation that take more or less time
+than the global settings below. Your 'false positive' adjustment will always
+be added to whatever time the plugin uses, so you can always add a
+margin of error to the time used by the plugin.</p>
 <h2>Settings</h2>
 
 <p><b>Minimum Players</b>: This plugin is active only if the specified minimum number of players are present in the server.</p>
 
-<p><b>Maximum Loading Seconds</b>: The maximum number of seconds you expect a level load to take. Should be between 15 and 60 seconds.</p>
+<p><b>Expected Between Round Seconds</b>: The expected number of seconds between the round over event and the next load level event. Do not use the maximum, use what you would normally expect. Should be be around 70 seconds. This is only a nominal setting used initially. As the plugin records actual times, it will adapt to using those actual times instead.</p>
+
+<p><b>False Positive Adjustment Seconds</b>: Seconds added to <b>Expected Between Round Seconds</b> or the recorded time for the map/mode, to avoid false positives. Use the maximum number of seconds between the load level event and the first spawn of a player for normal progress. Typically around 10 seconds.</p>
 
 <!--
 <p><b>Load Succeeded Event</b>: Choose whether a successful load is determined by the first team change event after a load, or the first player spawn. The first team change event is the earliest point by which a player comes out of the loading screen. The first player spawn comes later but insures that the level has loaded successfully. Using OnFirstSpawn is recommended.</p>
