@@ -90,10 +90,12 @@ private double fTotalLoadLevelSeconds = 0;
 private double fTotalLoadLevelRounds = 0;
 private int fTaskId;
 private String fTaskScheduled;
-private DateTime fTaskTimestamp = DateTime.MinValue;
-private bool fTest;
 private double fTotalLoadLevelMax = 0;
 private GameState fLastGameState;
+private Dictionary<String,double> fPerMapTime;
+private List<MaplistEntry> fMapList;
+private int fCurrentMapIndex;
+private int fNextMapIndex;
 
 private PluginState fPluginState;
 private GameState fGameState;
@@ -106,7 +108,8 @@ private Dictionary<int, Type> fListStrDict = null;
 
 // Settings
 public int MinimumPlayers;
-public int MaximumLoadingSeconds;
+public int MaximumBetweenRoundSeconds;
+public int FalsePositiveAdjustmentSeconds;
 public LoadedEvent LoadSucceededEvent;
 public String TimeExpiredCommand;
 //public bool EnableDebugLogging;
@@ -133,10 +136,12 @@ public LoadingScreenTimer() {
     fTotalLoadLevelRounds = 0;
     fTaskId = 100;
     fTaskScheduled = null;
-    fTaskTimestamp = DateTime.MinValue;
-    fTest = false;
     fTotalLoadLevelMax = 0;
     fLastGameState = GameState.Unknown;
+    fPerMapTime = new Dictionary<string,double>();
+    fMapList = null;
+    fCurrentMapIndex = 0;
+    fNextMapIndex = 0;
 
     fEasyTypeDict = new Dictionary<int, Type>();
     fEasyTypeDict.Add(0, typeof(int));
@@ -162,7 +167,8 @@ public LoadingScreenTimer() {
     /* Settings */
 
     MinimumPlayers = 8;
-    MaximumLoadingSeconds = 35;
+    MaximumBetweenRoundSeconds = 70;
+    FalsePositiveAdjustmentSeconds = 10;
     LoadSucceededEvent = LoadedEvent.OnFirstSpawn;
     TimeExpiredCommand = "mapList.runNextRound";
     DebugLoggingLevel = LogLevel.None;
@@ -175,7 +181,7 @@ public String GetPluginName() {
 }
 
 public String GetPluginVersion() {
-    return "1.0.0.3";
+    return "1.1.0.0";
 }
 
 public String GetPluginAuthor() {
@@ -208,7 +214,9 @@ public List<CPluginVariable> GetDisplayPluginVariables() {
         
         lstReturn.Add(new CPluginVariable("Minimum Players", MinimumPlayers.GetType(), MinimumPlayers));
 
-        lstReturn.Add(new CPluginVariable("Maximum Loading Seconds", MaximumLoadingSeconds.GetType(), MaximumLoadingSeconds));
+        lstReturn.Add(new CPluginVariable("Maximum Between Round Seconds", MaximumBetweenRoundSeconds.GetType(), MaximumBetweenRoundSeconds));
+
+        lstReturn.Add(new CPluginVariable("False Positive Adjustment Seconds", FalsePositiveAdjustmentSeconds.GetType(), FalsePositiveAdjustmentSeconds));
 
         lstReturn.Add(new CPluginVariable("Time Expired Command", TimeExpiredCommand.GetType(), TimeExpiredCommand));
 
@@ -366,6 +374,7 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnServerInfo",
         "OnCurrentLevel",
         "OnPlayerSpawned",
+        "OnPlayerLeft",
         "OnPlayerTeamChange",
         "OnPlayerSquadChange",
         "OnGlobalChat",
@@ -377,6 +386,7 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnLevelLoaded",
         "OnEndRound",
         "OnRunNextLevel",
+        "OnMaplistList",
         "OnResponseError"
     );
 }
@@ -395,10 +405,11 @@ public void OnPluginEnable() {
     DebugWrite("^b^3Game state = " + fGameState, 6);
 
     ServerCommand("serverInfo");
+    ServerCommand("mapList.list");
+    ServerCommand("mapList.getMapIndices");
 
     // Send out test command
     DebugWrite("^6Launching test task LST000 for 5 seconds, command: currentLevel", 3);
-    fTest = true;
     //this.ExecuteCommand("procon.protected.tasks.add", "LST001", "5", "1", "1", "procon.protected.pluginconsole.write", "LST TEST!");
     this.ExecuteCommand("procon.protected.tasks.add", "LST000", "5", "1", "1", "procon.protected.send", "currentLevel");
 }
@@ -412,6 +423,7 @@ public void OnPluginDisable() {
         fTotalLoadLevelMax = 0;
         fTotalLoadLevelRounds = 0;
         fTotalLoadLevelSeconds = 0;
+        fPerMapTime.Clear();
         
         if (fTaskScheduled != null) {
             ConsoleWrite("^bDisabling, removing tasks ...^n", 0);
@@ -435,6 +447,17 @@ public override void OnVersion(String type, String ver) {
     if (!fIsEnabled) return;
     
     DebugWrite("^5Got ^bOnVersion^n: " + type + " " + ver, 7);
+}
+
+
+public override void OnPlayerLeft(CPlayerInfo pinfo) {
+    if (!fIsEnabled) return;
+    
+    // Between rounds, update map indices relatively frequently by detecting player leave events
+    if (fPluginState == PluginState.Active && fGameState == GameState.RoundEnding && TotalPlayerCount() >= MinimumPlayers) {
+        DebugWrite("^5Got OnPlayerLeft: " + pinfo.SoldierName, 7);
+        ServerCommand("mapList.getMapIndices");
+    }
 }
 
 
@@ -472,7 +495,6 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             if (LoadSucceededEvent == LoadedEvent.OnFirstTeamChange) {
                 ConsoleWrite("^b^2LEVEL LOADED SUCCESSFULLY!", 0);
                 StopTasks();
-                UpdateLoadScreenDuration();
             }
 
         }
@@ -513,14 +535,11 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             if (LoadSucceededEvent == LoadedEvent.OnFirstSpawn) {
                 ConsoleWrite("^b^2LEVEL LOADED SUCCESSFULLY!", 0);
                 StopTasks();
-                UpdateLoadScreenDuration();
                 fPluginState = PluginState.Active;
             }
 
         }
-    
-        if (fPluginState == PluginState.Active) {
-        }
+
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -577,19 +596,43 @@ public override void OnServerInfo(CServerInfo serverInfo) {
 
         if (fServerInfo == null || fServerInfo.GameMode != serverInfo.GameMode || fServerInfo.Map != serverInfo.Map) {
             ConsoleDebug("ServerInfo update: " + serverInfo.Map + "/" + serverInfo.GameMode);
-        } else if (totalPlayerCount > 0 && (fGameState == GameState.RoundStarting || fGameState == GameState.Deploying)) {
+            if (String.IsNullOrEmpty(serverInfo.Map) || String.IsNullOrEmpty(serverInfo.GameMode)) {
+                ConsoleWarn("^1Possible problem loading next level: empty map/mode!");
+            } else if (fMapList != null) {
+                MaplistEntry current = null;
+                MaplistEntry next = null;
+                if (fMapList.Count > fCurrentMapIndex) {
+                    current = fMapList[fCurrentMapIndex];
+                }
+                if (fMapList.Count > fNextMapIndex) {
+                    next = fMapList[fNextMapIndex];
+                }
+                if (current != null && serverInfo.Map == current.MapFileName && serverInfo.GameMode == current.Gamemode) {
+                    ConsoleDebug("Server info map/mode agrees with current map/mode");
+                } else if (next != null && serverInfo.Map == next.MapFileName && serverInfo.GameMode == next.Gamemode) {
+                    ConsoleDebug("Server info map/mode agrees with next map/mode");
+                } else if (current != null) {
+                    ConsoleDebug("Server info map/mode DIFFERENT from expected: " + current.MapFileName + "/" + current.Gamemode);
+                }
+            }
+        } else if (totalPlayerCount > 0 && (fGameState == GameState.RoundEnding || fGameState == GameState.RoundStarting || fGameState == GameState.Deploying)) {
             DebugWrite("^5Got OnServerInfo: " + fGameState + ", " + totalPlayerCount + " players", 6);
         }
 
         if (fGameState != GameState.Unknown && (fPluginState == PluginState.JustEnabled || fPluginState == PluginState.Reconnected))
             fPluginState = PluginState.Active;
 
-        if (fLevelLoadTimestamp != DateTime.MinValue && totalPlayerCount >= MinimumPlayers) {
-            double elapsedLoadTime = DateTime.Now.Subtract(fLevelLoadTimestamp).TotalSeconds;
-            DebugWrite("OnServerInfo: load level elapsed time in seconds = " + elapsedLoadTime.ToString("F1"), 6);
-            if (fPluginState == PluginState.AttemptingRemedy && elapsedLoadTime > 60) {
-                DebugWrite("^1Attempted remedy is taking too long, > 60 seconds ...", 3);
-                fPluginState = PluginState.Error;
+        if (totalPlayerCount >= MinimumPlayers) {
+            if (fGameState == GameState.RoundEnding) {
+                ServerCommand("mapList.getMapIndices");
+            }
+            if (fLevelLoadTimestamp != DateTime.MinValue) {
+                double elapsedLoadTime = DateTime.Now.Subtract(fLevelLoadTimestamp).TotalSeconds;
+                DebugWrite("OnServerInfo: load level elapsed time in seconds = " + elapsedLoadTime.ToString("F1"), 6);
+                if (fPluginState == PluginState.AttemptingRemedy && elapsedLoadTime > 60) {
+                    DebugWrite("^1Attempted remedy is taking too long, > 60 seconds ...", 3);
+                    fPluginState = PluginState.Error;
+                }
             }
         }
     
@@ -598,6 +641,8 @@ public override void OnServerInfo(CServerInfo serverInfo) {
             fServerCrashed = true;
             DebugWrite("^1^bDETECTED GAME SERVER CRASH^n (recorded uptime longer than latest serverInfo uptime)", 3);
         }
+
+        // Update our copy as late as possible
         fServerInfo = serverInfo;
         fServerUptime = serverInfo.ServerUptime;
 
@@ -679,16 +724,24 @@ public override void OnRoundOver(int winningTeamId) {
 
     try {
 
-        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 4);
+        DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Round over detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
         if (fServerInfo != null)
             ConsoleDebug("Was map/mode: " + fServerInfo.Map + "/" + fServerInfo.GameMode);
     
         if (fGameState != GameState.RoundEnding) {
             fGameState = GameState.RoundEnding;
             DebugWrite("OnRoundOver: ^b^3Game state = " + fGameState, 6);
-            StopTasks();
+            int totalPlayers = TotalPlayerCount();
+            if (totalPlayers >= 4) {
+                fLevelLoadTimestamp = DateTime.Now;
+            } else {
+                fLevelLoadTimestamp = DateTime.MinValue;
+            }
+            if (totalPlayers >= MinimumPlayers) {
+                StartTimerTask();
+            }
         } else if (fGameState == GameState.RoundEnding) {
-            DebugWrite("^1OnLevelLoaded: detected another OnRoundOver event ...", 3);
+            DebugWrite("^OnRoundOver: detected another OnRoundOver event ...", 3);
         }
 
     } catch (Exception e) {
@@ -700,8 +753,11 @@ public override void OnRoundOver(int winningTeamId) {
 
 public override void OnLevelLoaded(String mapFileName, String Gamemode, int roundsPlayed, int roundsTotal) {
     if (!fIsEnabled) return;
+
+    int totalPlayers = TotalPlayerCount();
+    bool skipUpdate = false;
     
-    DebugWrite("^5Got OnLevelLoaded^n: " + TotalPlayerCount() + " players, " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
+    DebugWrite("^5Got OnLevelLoaded^n: " + totalPlayers + " players, " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
 
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -709,17 +765,16 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
         if (fPluginState == PluginState.AttemptingRemedy) {
             DebugWrite("New level loaded as an attempted remedy", 4);
             fPluginState = PluginState.Active;
+            skipUpdate = true; // don't update recorded times for a remedy case
         }
 
         if (fGameState != GameState.RoundStarting) {
             fGameState = GameState.RoundStarting;
             DebugWrite("OnLevelLoaded: ^b^3Game state = " + fGameState, 6);
-
-            int totalPlayers = TotalPlayerCount();
-
-            if (totalPlayers >= MinimumPlayers) {
-                fLevelLoadTimestamp = DateTime.Now;
-                StartTimerTask();
+            if (totalPlayers >= 4 && !skipUpdate) {
+                UpdateLoadScreenDuration(mapFileName, Gamemode);
+            } else {
+                fLevelLoadTimestamp = DateTime.MinValue;
             }
         } else if (fGameState == GameState.RoundStarting) {
             DebugWrite("^1OnLevelLoaded: detected another OnLevelLoaded event ...", 3);
@@ -774,7 +829,32 @@ public override void OnRestartLevel() {
     StopTasks();
 }
 
+public override void OnMaplistList(List<MaplistEntry> lstMaplist)
+{
+    if (!fIsEnabled)
+        return;
+    DebugWrite("^5Got OnMaplistList, " + lstMaplist.Count + " entries!", 8);
 
+    fMapList = lstMaplist;
+}
+
+public override void OnMaplistGetMapIndices(int mapIndex, int nextIndex) {
+    if (!fIsEnabled)
+        return;
+    if (fCurrentMapIndex == mapIndex && fNextMapIndex == nextIndex)
+        return; // We only care about changes
+
+    DebugWrite("^5Got OnMaplistGetMapIndices, " + mapIndex + " " + nextIndex + "!", 8);
+
+    fCurrentMapIndex = mapIndex;
+    fNextMapIndex = nextIndex;
+
+    MaplistEntry me = null;
+    if (fMapList != null && fMapList.Count > nextIndex) {
+        me = fMapList[nextIndex];
+    }
+    DebugWrite("Next map updated to " + me.MapFileName + "/" + me.Gamemode, 3);
+}
 
 
 
@@ -817,10 +897,28 @@ private void StartTimerTask() {
         return;
     }
     fTaskScheduled = "LST" + fTaskId;
-    DebugWrite("^6Starting task " + fTaskScheduled + " for " + MaximumLoadingSeconds + " seconds, expiring with command: " + TimeExpiredCommand, 3);
+    /*
+    Try to use adaptive time based on actual recorded start times for normal level loads.
+    Times are recordeed in fPerMapTime, keyed by map/mode. If there is no recorded time,
+    use the MaximumBetweenRoundSeconds setting. In either case, add some additional time
+    to give the game server a chance to load the level, thus avoiding false positives.
+    */
+    String map;
+    String mode;
+    GetNextMap(out map, out mode);
+    double adjSecs = 0;
+    String key = null;
+    if (map != null && mode != null)
+        key = map + "/" + mode;
+    if (key == null || !fPerMapTime.TryGetValue(key, out adjSecs)) {
+        adjSecs = MaximumBetweenRoundSeconds + FalsePositiveAdjustmentSeconds;
+    } else {
+        adjSecs += FalsePositiveAdjustmentSeconds;
+    }
+    String msg = (key != null) ? key : "?";
+    DebugWrite("^6 Starting task (" + msg + ") " + fTaskScheduled + " for " + adjSecs.ToString("F0") + " seconds, expiring with command: " + TimeExpiredCommand, 3);
     fTaskId += 1;
-    fTaskTimestamp = DateTime.Now;
-    this.ExecuteCommand("procon.protected.tasks.add", fTaskScheduled, MaximumLoadingSeconds.ToString(), "1", "1", "procon.protected.send", TimeExpiredCommand);
+    this.ExecuteCommand("procon.protected.tasks.add", fTaskScheduled, adjSecs.ToString("F0"), "1", "1", "procon.protected.send", TimeExpiredCommand);
 }
 
 
@@ -834,7 +932,17 @@ private void StopTasks() {
         ConsoleException(e);
     }
     fTaskScheduled = null;
-    fTaskTimestamp = DateTime.MinValue;
+}
+
+private void GetNextMap(out String map, out String mode) {
+    map = null;
+    mode = null;
+
+    if (fMapList != null && fNextMapIndex < fMapList.Count) {
+        MaplistEntry me = fMapList[fNextMapIndex];
+        map = me.MapFileName;
+        mode = me.Gamemode;
+    }
 }
 
 
@@ -929,7 +1037,7 @@ public int TotalPlayerCount() {
 }
 
 
-private void UpdateLoadScreenDuration() {
+private void UpdateLoadScreenDuration(String map, String mode) {
     if (fLevelLoadTimestamp == DateTime.MinValue) return;
     double secs = DateTime.Now.Subtract(fLevelLoadTimestamp).TotalSeconds;
     fLevelLoadTimestamp = DateTime.MinValue;
@@ -940,12 +1048,33 @@ private void UpdateLoadScreenDuration() {
         DebugWrite("Plugin in unexpected state, skipping level load timing statistics", 4);
         return;
     }
+    double last = 0;
+    String key = map + "/" + mode;
+    if (!fPerMapTime.TryGetValue(key, out last)) {
+        fPerMapTime[key] = secs;
+        DebugWrite("First recorded load time for " + key + " = " + secs.ToString("F1"), 3);
+        return;
+    }
+    if (last == 0) {
+        // Impossible!
+        DebugWrite("UpdateLoadScreenDuration has no recorded load time for " + key, 9);
+        last = secs + 1;
+    }
+    // remember the shortest time
+    if (secs > 30 && secs < last) {
+        fPerMapTime[key] = secs;
+        DebugWrite("Updating load time for " + key + " = " + secs.ToString("F1"), 3); 
+    } else {
+        DebugWrite("Retaining previous load time for " + key + " = " + last.ToString("F1"), 4);
+    }
+
     // take max
     fTotalLoadLevelSeconds += secs;
     fTotalLoadLevelRounds += 1;
     if (secs > fTotalLoadLevelMax)
         fTotalLoadLevelMax = secs;
-    DebugWrite("Load level seconds = " + secs.ToString("F0") + ", highest of " + fTotalLoadLevelRounds + " rounds = " + fTotalLoadLevelMax.ToString("F1") + ", average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
+    DebugWrite("Load level seconds = " + secs.ToString("F0") + ", highest of " + fTotalLoadLevelRounds + " rounds = " + fTotalLoadLevelMax.ToString("F1") + ", average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 5);
+
 }
 
 
