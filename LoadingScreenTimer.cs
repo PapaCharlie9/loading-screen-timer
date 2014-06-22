@@ -387,6 +387,7 @@ public void OnPluginLoaded(String strHostName, String strPort, String strPRoConV
         "OnEndRound",
         "OnRunNextLevel",
         "OnMaplistList",
+        "OnMaplistGetMapIndices",
         "OnResponseError"
     );
 }
@@ -424,6 +425,8 @@ public void OnPluginDisable() {
         fTotalLoadLevelRounds = 0;
         fTotalLoadLevelSeconds = 0;
         fPerMapTime.Clear();
+        fCurrentMapIndex = 0;
+        fNextMapIndex = 0;
         
         if (fTaskScheduled != null) {
             ConsoleWrite("^bDisabling, removing tasks ...^n", 0);
