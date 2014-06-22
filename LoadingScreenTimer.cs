@@ -82,8 +82,7 @@ private DateTime fEnabledTimestamp = DateTime.MinValue;
 private DateTime fLastVersionCheckTimestamp = DateTime.MinValue;
 private String fHost;
 private String fPort;
-private DateTime fRoundOverTimestamp = DateTime.MinValue;
-private DateTime fRoundStartTimestamp = DateTime.Now;
+private DateTime fFirstSpawnTimestamp = DateTime.MinValue;
 private DateTime fLastServerInfoTimestamp = DateTime.MinValue;
 private DateTime fLevelLoadTimestamp = DateTime.MinValue;
 private double fTotalLoadLevelSeconds = 0;
@@ -128,8 +127,7 @@ public LoadingScreenTimer() {
     fServerInfo = null;
     fServerUptime = 0;
     fServerCrashed = false;
-    fRoundOverTimestamp = DateTime.MinValue;
-    fRoundStartTimestamp = DateTime.Now;
+    fFirstSpawnTimestamp = DateTime.MinValue;
     fLastServerInfoTimestamp = DateTime.MinValue;
     fLevelLoadTimestamp = DateTime.MinValue;
     fTotalLoadLevelSeconds = 0;
@@ -398,8 +396,7 @@ public void OnPluginEnable() {
     fPluginState = PluginState.JustEnabled;
     fGameState = GameState.Unknown;
     fEnabledTimestamp = DateTime.Now;
-    fRoundOverTimestamp = DateTime.MinValue;
-    fRoundStartTimestamp = DateTime.Now;
+    fFirstSpawnTimestamp = DateTime.MinValue;
 
     ConsoleWrite("^b^2Enabled!^0^n Version = " + GetPluginVersion(), 0);
     DebugWrite("^b^3State = " + fPluginState, 6);
@@ -449,7 +446,7 @@ public void OnPluginDisable() {
 public override void OnVersion(String type, String ver) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got ^bOnVersion^n: " + type + " " + ver, 7);
+    DebugWrite("^9Got ^bOnVersion^n: " + type + " " + ver, 7);
 }
 
 
@@ -458,7 +455,7 @@ public override void OnPlayerLeft(CPlayerInfo pinfo) {
     
     // Between rounds, update map indices relatively frequently by detecting player leave events
     if (fPluginState == PluginState.Active && fGameState == GameState.RoundEnding && TotalPlayerCount() >= MinimumPlayers) {
-        DebugWrite("^5Got OnPlayerLeft: " + pinfo.SoldierName, 7);
+        DebugWrite("^9Got OnPlayerLeft (" + TotalPlayerCount() + " remaining): " + pinfo.SoldierName, 7);
         ServerCommand("mapList.getMapIndices");
     }
 }
@@ -469,7 +466,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
 
     if (fGameState == GameState.Playing && squadId == 0) return;
     
-    DebugWrite("^5Got OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 11);
+    DebugWrite("^9Got OnPlayerSquadChange^n: " + soldierName + " " + teamId + " " + squadId, 11);
 
 }
 
@@ -477,7 +474,7 @@ public override void OnPlayerSquadChange(String soldierName, int teamId, int squ
 public override void OnPlayerTeamChange(String soldierName, int teamId, int squadId) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 11);
+    DebugWrite("^9Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 11);
 
     if (fPluginState == PluginState.Disabled || fPluginState == PluginState.Error) return;
 
@@ -489,7 +486,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             if (wasUnknown || fGameState == GameState.Playing) DebugWrite("OnPlayerTeamChange: ^b^3Game state = " + fGameState, 6); 
         } else if (fGameState == GameState.RoundStarting) {
             // First team change after level loaded may indicate successful load
-            DebugWrite("^5Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 8);
+            DebugWrite("^9Got OnPlayerTeamChange: " + soldierName + " " + teamId + " " + squadId, 8);
             if (LoadSucceededEvent == LoadedEvent.OnFirstTeamChange || DebugLevel > 3)
                 DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1First team change detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
 
@@ -514,7 +511,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
     if (!fIsEnabled) return;
     
     if (fGameState != GameState.Playing && fGameState != GameState.Warmup)
-        DebugWrite("^5Got OnPlayerSpawned: ^n" + soldierName, 8);
+        DebugWrite("^9Got OnPlayerSpawned: ^n" + soldierName, 8);
     
     try {
         int totalPlayers = TotalPlayerCount();
@@ -541,6 +538,15 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
                 fPluginState = PluginState.Active;
             }
 
+            if (totalPlayers >= 4 && fFirstSpawnTimestamp != DateTime.MinValue) {
+                if (fMapList != null && fCurrentMapIndex < fMapList.Count) {
+                    MaplistEntry me = fMapList[fCurrentMapIndex];
+                    double et = DateTime.Now.Subtract(fFirstSpawnTimestamp).TotalSeconds;
+                    DebugWrite("^7TIME: Seconds between load of " + me.MapFileName + "/" + me.Gamemode + " and first spawn was " + et.ToString("F0"), 3);
+                    fFirstSpawnTimestamp = DateTime.MinValue;
+                }
+            }
+
         }
 
     } catch (Exception e) {
@@ -564,7 +570,7 @@ public override void OnPlayerKilled(Kill kKillerVictimDetails) {
         isAdminKill = (weapon == "Death");
     }
     
-    DebugWrite("^5Got OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 8);
+    DebugWrite("^9Got OnPlayerKilled^n: " + killer  + " -> " + victim + " (" + weapon + ")", 8);
     if (isAdminKill) DebugWrite("^9OnPlayerKilled: admin kill: ^b" + victim + "^n (" + weapon + ")", 7);
 
     try {
@@ -580,7 +586,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
     if (!fIsEnabled || serverInfo == null) return;
 
     if (fServerInfo == null)
-        DebugWrite("^5Got OnServerInfo: Debug level = " + DebugLevel, 8);
+        DebugWrite("^9Got OnServerInfo: Debug level = " + DebugLevel, 8);
 
     DateTime debugTime = DateTime.Now;
     
@@ -619,7 +625,7 @@ public override void OnServerInfo(CServerInfo serverInfo) {
                 }
             }
         } else if (totalPlayerCount > 0 && (fGameState == GameState.RoundEnding || fGameState == GameState.RoundStarting || fGameState == GameState.Deploying)) {
-            DebugWrite("^5Got OnServerInfo: " + fGameState + ", " + totalPlayerCount + " players", 6);
+            DebugWrite("^9Got OnServerInfo: " + fGameState + ", " + totalPlayerCount + " players", 6);
         }
 
         if (fGameState != GameState.Unknown && (fPluginState == PluginState.JustEnabled || fPluginState == PluginState.Reconnected))
@@ -700,7 +706,7 @@ public override void OnSquadChat(String speaker, String message, int teamId, int
 public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnRoundOverPlayers^n", 7);
+    DebugWrite("^9Got OnRoundOverPlayers^n", 7);
 
     try {
         // TBD
@@ -712,7 +718,7 @@ public override void OnRoundOverPlayers(List<CPlayerInfo> players) {
 public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnRoundOverTeamScores^n", 7);
+    DebugWrite("^9Got OnRoundOverTeamScores^n", 7);
 
     try {
     } catch (Exception e) {
@@ -723,7 +729,7 @@ public override void OnRoundOverTeamScores(List<TeamScore> teamScores) {
 public override void OnRoundOver(int winningTeamId) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnRoundOver^n: winner " + winningTeamId, 7);
+    DebugWrite("^9Got OnRoundOver^n: winner " + winningTeamId, 7);
 
     try {
 
@@ -760,7 +766,7 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
     int totalPlayers = TotalPlayerCount();
     bool skipUpdate = false;
     
-    DebugWrite("^5Got OnLevelLoaded^n: " + totalPlayers + " players, " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
+    DebugWrite("^9Got OnLevelLoaded^n: " + totalPlayers + " players, " + mapFileName + " " + Gamemode + " " + roundsPlayed + "/" + roundsTotal, 3);
 
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
@@ -782,7 +788,11 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
         } else if (fGameState == GameState.RoundStarting) {
             DebugWrite("^1OnLevelLoaded: detected another OnLevelLoaded event ...", 3);
         }
-
+        if (totalPlayers >= 4)
+            fFirstSpawnTimestamp = DateTime.Now;
+        else {
+            fFirstSpawnTimestamp = DateTime.MinValue;
+        }
     } catch (Exception e) {
         ConsoleException(e);
     }
@@ -793,13 +803,13 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
 public override void OnEndRound(int iWinningTeamID) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnEndRound^n: " + iWinningTeamID, 7);
+    DebugWrite("^9Got OnEndRound^n: " + iWinningTeamID, 7);
 }
 
 public override void OnRunNextLevel() {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnRunNextLevel^n", 3);
+    DebugWrite("^9Got OnRunNextLevel^n", 3);
     if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("runNextRound")) {
         ConsoleWarn("^8^n^b^8POSSIBLE LOADING SCREEN PROBLEM: attempting to run next round ...");
         fPluginState = PluginState.AttemptingRemedy;
@@ -811,7 +821,7 @@ public override void OnRunNextLevel() {
 public override void OnCurrentLevel(string mapFileName) {
     if (!fIsEnabled) return;
     
-    DebugWrite("^5Got OnCurrentLevel^n, " + mapFileName, 3);
+    DebugWrite("^9Got OnCurrentLevel^n, " + mapFileName, 3);
     if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("currentLevel")) {
         ConsoleWarn("^0^n^bPOSSIBLE LOADING SCREEN PROBLEM: information only, no action taken ...");
         StopTasks();
@@ -823,7 +833,7 @@ public override void OnRestartLevel() {
 
     String msg = (!String.IsNullOrEmpty(fTaskScheduled)) ? " during scheduled task " + fTaskScheduled : " with no task scheduled";
     
-    DebugWrite("^5Got OnRestartLevel " + msg, 3);
+    DebugWrite("^9Got OnRestartLevel " + msg, 3);
 
     if (!String.IsNullOrEmpty(fTaskScheduled) && TimeExpiredCommand.Contains("restartRound")) {
         ConsoleWarn("^8^n^b^8POSSIBLE LOADING SCREEN PROBLEM: attempting to restart round ...");
@@ -836,7 +846,7 @@ public override void OnMaplistList(List<MaplistEntry> lstMaplist)
 {
     if (!fIsEnabled)
         return;
-    DebugWrite("^5Got OnMaplistList, " + lstMaplist.Count + " entries!", 8);
+    DebugWrite("^9Got OnMaplistList, " + lstMaplist.Count + " entries!", 8);
 
     fMapList = lstMaplist;
 }
@@ -847,7 +857,7 @@ public override void OnMaplistGetMapIndices(int mapIndex, int nextIndex) {
     if (fCurrentMapIndex == mapIndex && fNextMapIndex == nextIndex)
         return; // We only care about changes
 
-    DebugWrite("^5Got OnMaplistGetMapIndices, " + mapIndex + " " + nextIndex + "!", 8);
+    DebugWrite("^9Got OnMaplistGetMapIndices, " + mapIndex + " " + nextIndex + "!", 8);
 
     fCurrentMapIndex = mapIndex;
     fNextMapIndex = nextIndex;
@@ -870,7 +880,7 @@ public override void OnResponseError(List<string> lstRequestWords, string strErr
         int level = 7;
         if (lstRequestWords[0] == "player.ping") level = 8;
 
-        DebugWrite("^5Got OnResponseError, " + msg, level);
+        DebugWrite("^9Got OnResponseError, " + msg, level);
 
 
     } catch (Exception e) {
@@ -961,7 +971,7 @@ private String FormatMessage(String msg, MessageType type, int level) {
     else if (type.Equals(MessageType.Exception))
         prefix += "^1^bEXCEPTION^0^n: ";
     else if (type.Equals(MessageType.Debug))
-        prefix += "^5DEBUG^0^n: ";
+        prefix += "^9DEBUG^0^n: ";
 
     return prefix + msg.Replace('{','(').Replace('}',')') + "^n"; // close styling for every line with ^n
 }
@@ -1055,7 +1065,7 @@ private void UpdateLoadScreenDuration(String map, String mode) {
     String key = map + "/" + mode;
     if (!fPerMapTime.TryGetValue(key, out last)) {
         fPerMapTime[key] = secs;
-        DebugWrite("First recorded load time for " + key + " = " + secs.ToString("F1"), 3);
+        DebugWrite("^7TIME: First recorded load time for " + key + " = " + secs.ToString("F1"), 3);
         return;
     }
     if (last == 0) {
@@ -1066,9 +1076,9 @@ private void UpdateLoadScreenDuration(String map, String mode) {
     // remember the shortest time
     if (secs > 30 && secs < last) {
         fPerMapTime[key] = secs;
-        DebugWrite("Updating load time for " + key + " = " + secs.ToString("F1"), 3); 
+        DebugWrite("^7TIME: Updating load time for " + key + " = " + secs.ToString("F1"), 3); 
     } else {
-        DebugWrite("Retaining previous load time for " + key + " = " + last.ToString("F1"), 4);
+        DebugWrite("^7TIME: Retaining previous load time for " + key + " = " + last.ToString("F1"), 4);
     }
 
     // take max
