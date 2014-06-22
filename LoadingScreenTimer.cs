@@ -95,6 +95,8 @@ private Dictionary<String,double> fPerMapTime;
 private List<MaplistEntry> fMapList;
 private int fCurrentMapIndex;
 private int fNextMapIndex;
+private String fLoadedMapMode;
+private int fLastPlayerCount;
 
 private PluginState fPluginState;
 private GameState fGameState;
@@ -140,6 +142,8 @@ public LoadingScreenTimer() {
     fMapList = null;
     fCurrentMapIndex = 0;
     fNextMapIndex = 0;
+    fLoadedMapMode = null;
+    fLastPlayerCount = 0;
 
     fEasyTypeDict = new Dictionary<int, Type>();
     fEasyTypeDict.Add(0, typeof(int));
@@ -165,7 +169,7 @@ public LoadingScreenTimer() {
     /* Settings */
 
     MinimumPlayers = 8;
-    ExpectedBetweenRoundSeconds = 70;
+    ExpectedBetweenRoundSeconds = 75;
     FalsePositiveAdjustmentSeconds = 10;
     LoadSucceededEvent = LoadedEvent.OnFirstSpawn;
     TimeExpiredCommand = "mapList.runNextRound";
@@ -452,10 +456,13 @@ public override void OnVersion(String type, String ver) {
 
 public override void OnPlayerLeft(CPlayerInfo pinfo) {
     if (!fIsEnabled) return;
+
+    if (fLastPlayerCount > 0)
+        --fLastPlayerCount;
     
     // Between rounds, update map indices relatively frequently by detecting player leave events
     if (fPluginState == PluginState.Active && fGameState == GameState.RoundEnding && TotalPlayerCount() >= MinimumPlayers) {
-        DebugWrite("^9Got OnPlayerLeft (" + TotalPlayerCount() + " remaining): " + pinfo.SoldierName, 7);
+        DebugWrite("^9Got OnPlayerLeft (" + fLastPlayerCount + " remaining): " + pinfo.SoldierName, 7);
         ServerCommand("mapList.getMapIndices");
     }
 }
@@ -539,11 +546,11 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
             }
 
             if (totalPlayers >= 4 && fFirstSpawnTimestamp != DateTime.MinValue) {
-                if (fMapList != null && fCurrentMapIndex < fMapList.Count) {
-                    MaplistEntry me = fMapList[fCurrentMapIndex];
+                if (fLoadedMapMode != null) {
                     double et = DateTime.Now.Subtract(fFirstSpawnTimestamp).TotalSeconds;
-                    DebugWrite("^7TIME: Seconds between load of " + me.MapFileName + "/" + me.Gamemode + " and first spawn was " + et.ToString("F0"), 3);
+                    DebugWrite("^4TIME: Seconds between load of " + fLoadedMapMode + " and first spawn was " + et.ToString("F0"), 3);
                     fFirstSpawnTimestamp = DateTime.MinValue;
+                    fLoadedMapMode = null;
                 }
             }
 
@@ -592,6 +599,8 @@ public override void OnServerInfo(CServerInfo serverInfo) {
     
     try {
         double elapsedTimeInSeconds = DateTime.Now.Subtract(fLastServerInfoTimestamp).TotalSeconds;
+
+        fLastPlayerCount = serverInfo.PlayerCount;
 
         // Update game state if just enabled (as of R38, CTF TeamScores may be null, does not mean round end)
         if (fGameState == GameState.Unknown && serverInfo.GameMode != "CaptureTheFlag0") {
@@ -770,6 +779,8 @@ public override void OnLevelLoaded(String mapFileName, String Gamemode, int roun
 
     try {
         DebugWrite(":::::::::::::::::::::::::::::::::::: ^b^1Level loaded detected^0^n ::::::::::::::::::::::::::::::::::::", 3);
+
+        fLoadedMapMode = mapFileName + "/" + Gamemode;
 
         if (fPluginState == PluginState.AttemptingRemedy) {
             DebugWrite("New level loaded as an attempted remedy", 4);
@@ -1065,7 +1076,7 @@ private void UpdateLoadScreenDuration(String map, String mode) {
     String key = map + "/" + mode;
     if (!fPerMapTime.TryGetValue(key, out last)) {
         fPerMapTime[key] = secs;
-        DebugWrite("^7TIME: First recorded load time for " + key + " = " + secs.ToString("F1"), 3);
+        DebugWrite("^4TIME: First recorded load time for " + key + " = " + secs.ToString("F1"), 3);
         return;
     }
     if (last == 0) {
@@ -1076,9 +1087,9 @@ private void UpdateLoadScreenDuration(String map, String mode) {
     // remember the shortest time
     if (secs > 30 && secs < last) {
         fPerMapTime[key] = secs;
-        DebugWrite("^7TIME: Updating load time for " + key + " = " + secs.ToString("F1"), 3); 
+        DebugWrite("^4TIME: Updating load time for " + key + " = " + secs.ToString("F1"), 3); 
     } else {
-        DebugWrite("^7TIME: Retaining previous load time for " + key + " = " + last.ToString("F1"), 4);
+        DebugWrite("^4TIME: Retaining previous load time for " + key + " = " + last.ToString("F1"), 4);
     }
 
     // take max
@@ -1203,7 +1214,7 @@ margin of error to the time used by the plugin.</p>
 
 <p><b>Minimum Players</b>: This plugin is active only if the specified minimum number of players are present in the server.</p>
 
-<p><b>Expected Between Round Seconds</b>: The expected number of seconds between the round over event and the next load level event. Do not use the maximum, use what you would normally expect. Should be be around 70 seconds. This is only a nominal setting used initially. As the plugin records actual times, it will adapt to using those actual times instead.</p>
+<p><b>Expected Between Round Seconds</b>: The expected number of seconds between the round over event and the next load level event. Do not use the maximum, use what you would normally expect. Should be from 72 to 75 seconds. This is only a nominal setting used initially. As the plugin records actual times, it will adapt to using those actual times instead.</p>
 
 <p><b>False Positive Adjustment Seconds</b>: Seconds added to <b>Expected Between Round Seconds</b> or the recorded time for the map/mode, to avoid false positives. Use the maximum number of seconds between the load level event and the first spawn of a player for normal progress. Typically around 10 seconds.</p>
 
