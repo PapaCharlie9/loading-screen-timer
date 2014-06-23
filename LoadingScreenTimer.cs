@@ -555,7 +555,8 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
                     fTotalLoadLevelRounds += 1;
                     if (et > fTotalLoadLevelMax)
                         fTotalLoadLevelMax = et;
-                    DebugWrite("^4Consider setting ^bFalse Positive Adjustment Seconds^n^4 to " + fTotalLoadLevelMax.ToString("F0") + ", based on " + fTotalLoadLevelRounds + " rounds, average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
+                    if (FalsePositiveAdjustmentSeconds < (fTotalLoadLevelMax+1))
+                        DebugWrite("^4Consider setting ^bFalse Positive Adjustment Seconds^n^4 to " + (fTotalLoadLevelMax+1).ToString("F0") + ", based on " + fTotalLoadLevelRounds + " rounds, average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
 
                     fFirstSpawnTimestamp = DateTime.MinValue;
                     fLoadedMapMode = null;
