@@ -500,7 +500,7 @@ public override void OnPlayerTeamChange(String soldierName, int teamId, int squa
             fGameState = (totalPlayers < 4) ? GameState.Warmup :GameState.Deploying;
 
             if (LoadSucceededEvent == LoadedEvent.OnFirstTeamChange) {
-                ConsoleWrite("^b^2LEVEL LOADED SUCCESSFULLY!", 0);
+                ConsoleWrite("^b^2LEVEL LOADED SUCCESSFULLY!", 1);
                 StopTasks();
             }
 
@@ -555,7 +555,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
                     fTotalLoadLevelRounds += 1;
                     if (et > fTotalLoadLevelMax)
                         fTotalLoadLevelMax = et;
-                    DebugWrite("^4Consider setting ^bFalse Positive Adjustment Seconds^n to " + fTotalLoadLevelMax.ToString("F0") + ", based on " + fTotalLoadLevelRounds + " rounds, average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
+                    DebugWrite("^4Consider setting ^bFalse Positive Adjustment Seconds^n^4 to " + fTotalLoadLevelMax.ToString("F0") + ", based on " + fTotalLoadLevelRounds + " rounds, average  = " + (fTotalLoadLevelSeconds/fTotalLoadLevelRounds).ToString("F1"), 3);
 
                     fFirstSpawnTimestamp = DateTime.MinValue;
                     fLoadedMapMode = null;
@@ -567,7 +567,7 @@ public override void OnPlayerSpawned(String soldierName, Inventory spawnedInvent
     } catch (Exception e) {
         ConsoleException(e);
     }
-    if (fGameState != GameState.Unknown && (fPluginState == PluginState.JustEnabled || fPluginState == PluginState.Reconnected))
+    if (fGameState != GameState.Unknown && fPluginState != PluginState.Active)
         fPluginState = PluginState.Active;
 }
 
@@ -1020,7 +1020,7 @@ public void ConsoleWrite(String msg, int level)
 
 public void ConsoleWarn(String msg)
 {
-    ConsoleWrite(msg, MessageType.Warning, 1);
+    ConsoleWrite(msg, MessageType.Warning, 0);
 }
 
 public void ConsoleError(String msg)
